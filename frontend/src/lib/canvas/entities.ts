@@ -91,6 +91,12 @@ export class Entities {
 
   updateFromSnapshot(data: any): void {
     if (!data?.agents) return;
+    // Remove dead agents
+    if (data.removed_agents) {
+      for (const id of data.removed_agents) {
+        this.agents.delete(id);
+      }
+    }
     for (const [id, state] of Object.entries(data.agents) as [string, any][]) {
       let a = this.agents.get(id);
       if (!a) {

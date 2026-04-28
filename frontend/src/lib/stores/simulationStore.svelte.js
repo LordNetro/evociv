@@ -1,10 +1,11 @@
 import { writable } from 'svelte/store';
 
-/** @typedef {{ tick: number, agents: Record<string, any>, metrics: { population: number, avg_hunger: number, avg_thirst: number, avg_health: number, avg_energy: number }, events: Array<{ event_id: string, type: string, severity: string, description: string, tick: number }>, connected: boolean }} SimulationState */
+/** @typedef {{ tick: number, agents: Record<string, any>, tiles: Array<{x: number, y: number, resource_type: string|null, amount: number}>, metrics: { population: number, avg_hunger: number, avg_thirst: number, avg_health: number, avg_energy: number }, events: Array<{ event_id: string, type: string, severity: string, description: string, tick: number }>, connected: boolean }} SimulationState */
 
 const INITIAL_STATE = {
   tick: 0,
   agents: {},
+  tiles: [],
   metrics: { population: 0, avg_hunger: 0, avg_thirst: 0, avg_health: 0, avg_energy: 0 },
   events: [],
   connected: false,
@@ -21,6 +22,7 @@ function createSimulationStore() {
         ...state,
         tick: data.tick ?? state.tick,
         agents: data.agents ?? state.agents,
+        tiles: data.tiles ?? state.tiles,
         metrics: data.metrics ?? state.metrics,
         events: data.events ?? state.events,
       }));

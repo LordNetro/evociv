@@ -14,7 +14,9 @@ jobs:
           node-version: 22
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - name: Build native bindings
+        run: npm rebuild @rolldown/binding-linux-x64-gnu 2>/dev/null || npm rebuild
       - run: npm run lint
       - run: npm run check
 

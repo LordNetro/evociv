@@ -1,0 +1,32 @@
+world_rules:
+  day_night_cycle: false
+  seasons: false
+
+  hunger:
+    decay_rate: 0.1
+    critical_threshold: 70
+    starvation_damage: 2
+
+  thirst:
+    decay_rate: 0.15
+    critical_threshold: 70
+    dehydration_damage: 3
+
+  energy:
+    decay_rate: 0.05
+    rest_recovery: 0.5
+
+  reproduction:
+    min_energy: 50
+    max_hunger: 50
+    max_thirst: 50
+    min_sociability: 60
+    duration_ticks: 10
+
+  combat:
+    enabled: false
+    base_damage: 10
+
+  relationships:
+    encounter_radius: 3
+    friendship_decay: 0.01

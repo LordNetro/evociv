@@ -8,7 +8,7 @@ from app.db.database import engine, Base, async_session_maker
 from app.db import models  # noqa: F401 — registers ORM models with Base.metadata
 from app.api.ws import router as ws_router, manager as ws_manager
 from app.simulation.world import World
-from app.simulation.agent import AgentFactory
+from app.simulation.agent import Agent
 from app.simulation.engine import SimulationEngine
 from app.ai.orchestrator import RealLLMOrchestrator
 from app.ai.memory import AgentMemory
@@ -23,17 +23,32 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     # Create simulation engine with real LLM
-    world = World(width=50, height=50, seed=42)
-    agents = AgentFactory.create_default_agents()
+    world = World(width=25, height=25, seed=123)
 
-    # Attach system prompts from world config (default prompts for now)
-    prompts = {
-        "agent_001": "You are a gatherer. You prioritize finding food and water. strength=60, intelligence=40, sociability=50, speed=55",
-        "agent_002": "You are a builder. You believe in creating shelters and structures. strength=70, intelligence=55, sociability=40, speed=35",
-        "agent_003": "You are a scout. You are curious and eager to explore. strength=45, intelligence=60, sociability=65, speed=80",
-    }
-    for agent in agents:
-        agent.system_prompt = prompts.get(agent.id, "")
+    # 6 agents for the 25x25 world
+    agent_configs = [
+        Agent(name="Zog", position=(3.0, 3.0), role="gatherer", sex="male",
+              strength=60, intelligence=40, sociability=50, speed=55,
+              system_prompt="You are Zog, a resourceful gatherer. You prioritize finding food and water. You are cautious but reliable."),
+        Agent(name="Mila", position=(20.0, 18.0), role="builder", sex="female",
+              strength=70, intelligence=55, sociability=40, speed=35,
+              system_prompt="You are Mila, a skilled builder. You believe civilization needs strong shelters and structures. You are patient and methodical."),
+        Agent(name="Kael", position=(22.0, 5.0), role="scout", sex="male",
+              strength=45, intelligence=60, sociability=65, speed=80,
+              system_prompt="You are Kael, an adventurous scout. You are curious about the world and eager to explore. You are quick and observant."),
+        Agent(name="Nyx", position=(8.0, 20.0), role="gatherer", sex="female",
+              strength=40, intelligence=70, sociability=30, speed=60,
+              system_prompt="You are Nyx, a perceptive gatherer. You trust few but are loyal to those you befriend. You prefer working alone."),
+        Agent(name="Riv", position=(12.0, 12.0), role="scout", sex="female",
+              strength=35, intelligence=50, sociability=80, speed=75,
+              system_prompt="You are Riv, a swift scout. You are energetic, talkative, and always looking for new resources to share with the group."),
+        Agent(name="Fen", position=(5.0, 22.0), role="builder", sex="male",
+              strength=80, intelligence=45, sociability=55, speed=30,
+              system_prompt="You are Fen, a strong builder with a creative mind. You dream of grand structures and work hard to make them reality."),
+    ]
+    for i, cfg in enumerate(agent_configs):
+        cfg.id = f"agent_{i+1:03d}"
+    agents = agent_configs
 
     memory = AgentMemory()
     llm = RealLLMOrchestrator(

@@ -1,0 +1,15 @@
+{
+  "name": "Example World 02 — Small Valley",
+  "description": "A compact 25x25 valley with 6 agents. Tighter space means more interaction.",
+  "seed": 123,
+  "grid_width": 25,
+  "grid_height": 25,
+  "tick_rate": 0.1,
+  "resources": {
+    "trees": { "count": 25, "regeneration_rate": 0.02 },
+    "water": { "count": 8, "regeneration_rate": 0.0 },
+    "berries": { "count": 15, "regeneration_rate": 0.08 },
+    "stone": { "count": 10, "regeneration_rate": 0.0 }
+  },
+  "starting_agents": 6
+}

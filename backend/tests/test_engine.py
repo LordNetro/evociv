@@ -165,6 +165,82 @@ class TestActions:
         slow_dur = get_action_duration(ActionType.MOVE, slow_agent)
         assert fast_dur < slow_dur
 
+    def test_move_action(self):
+        """Agent advances along a pre-computed path."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="Tester", position=(0.0, 0.0))
+        agent.move_path = [(1, 0), (2, 0)]
+        result = REGISTRY[ActionType.MOVE](agent, world)
+        assert result.success is True
+        assert agent.position == (1.0, 0.0)
+
+    def test_chop_action(self):
+        """Chopping a tree adds wood to inventory."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0))
+        world.get_tile(5, 5).resource_type = "tree"
+        world.get_tile(5, 5).amount = 5
+        result = REGISTRY[ActionType.CHOP](agent, world)
+        assert result.success is True
+        assert agent.inventory.get("wood", 0) == 1
+
+    def test_eat_action(self):
+        """Eating berries reduces hunger."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0))
+        agent.hunger = 50.0
+        agent.inventory["berries"] = 2
+        result = REGISTRY[ActionType.EAT](agent, world)
+        assert result.success is True
+        assert agent.hunger == 30.0
+        assert agent.inventory["berries"] == 1
+
+    def test_gather_action(self):
+        """Gathering from a berries tile adds berries to inventory."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0))
+        # Clear all tiles in the 3x3 area to avoid accidental matches
+        for dy in range(-1, 2):
+            for dx in range(-1, 2):
+                tile = world.get_tile(5 + dx, 5 + dy)
+                tile.resource_type = None
+                tile.amount = 0
+        world.get_tile(5, 5).resource_type = "berries"
+        world.get_tile(5, 5).amount = 3
+        result = REGISTRY[ActionType.GATHER](agent, world)
+        assert result.success is True
+        assert agent.inventory.get("berries", 0) == 1
+
+    def test_rest_action(self):
+        """Resting recovers energy."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0))
+        agent.energy = 50.0
+        result = REGISTRY[ActionType.REST](agent, world)
+        assert result.success is True
+        assert agent.energy == 60.0
+
+    def test_chop_no_tree(self):
+        """Chopping with no tree nearby fails gracefully."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0))
+        # Clear all tiles in the 3x3 area to avoid accidental matches
+        for dy in range(-1, 2):
+            for dx in range(-1, 2):
+                tile = world.get_tile(5 + dx, 5 + dy)
+                tile.resource_type = None
+                tile.amount = 0
+        result = REGISTRY[ActionType.CHOP](agent, world)
+        assert result.success is False
+
+    def test_eat_no_food(self):
+        """Eating with empty inventory fails gracefully."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0))
+        agent.inventory.clear()
+        result = REGISTRY[ActionType.EAT](agent, world)
+        assert result.success is False
+
 
 # ─── Event Queue Tests ────────────────────────────────────────────
 
@@ -295,4 +371,4 @@ class TestEngine:
         await asyncio.sleep(0.15)  # Let several ticks pass
         await engine.stop()
         # Agent should have moved from idle to some other state
-        assert agent.fsm_state != "idle" or engine.tick_count > 0
+        assert agent.fsm_state != "idle"

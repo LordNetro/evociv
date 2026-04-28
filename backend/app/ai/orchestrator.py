@@ -43,6 +43,9 @@ class RealLLMOrchestrator:
         self._last_test_time = 0
         self._test_interval = 60
 
+        self._llm_semaphore: asyncio.Semaphore | None = None
+        self._background_tasks: set[asyncio.Task] = set()
+
     @property
     def is_available(self) -> Optional[bool]:
         """Public read-only: None=untested, True=up, False=down."""
@@ -96,10 +99,25 @@ class RealLLMOrchestrator:
 
         async def _resolve() -> None:
             try:
-                if settings.llm_enabled and await self.check_availability():
-                    result = await self._call_ollama(prompt)
-                else:
-                    raise RuntimeError("LLM disabled or unavailable")
+                # Initialize semaphore lazily (avoids "no running loop" on import)
+                if self._llm_semaphore is None:
+                    self._llm_semaphore = asyncio.Semaphore(1)
+
+                async with self._llm_semaphore:
+                    if settings.llm_enabled:
+                        available = await asyncio.wait_for(
+                            self.check_availability(), timeout=10
+                        )
+                        if available:
+                            total_timeout = self.timeout + 5
+                            result = await asyncio.wait_for(
+                                self._call_ollama(prompt),
+                                timeout=total_timeout,
+                            )
+                        else:
+                            raise RuntimeError("LLM disabled or unavailable")
+                    else:
+                        raise RuntimeError("LLM disabled or unavailable")
 
                 if result.get("success"):
                     plan = result.get("data", {})
@@ -108,6 +126,16 @@ class RealLLMOrchestrator:
                     if intention:
                         self.memory.add_thought(agent_id, 0, f"Planned: {intention}. {reasoning}")
                 future.set_result(result)
+
+            except asyncio.TimeoutError:
+                logger.warning(f"Ollama _resolve timed out for {agent_id}")
+                if settings.llm_fallback_to_mock:
+                    logger.debug(f"Mock fallback for {agent_id}")
+                    mock_future = self._mock.call_async(agent_id, prompt)
+                    mock_result = await mock_future
+                    future.set_result(mock_result)
+                else:
+                    future.set_result({"success": False, "error": "LLM call timed out"})
 
             except Exception as e:
                 logger.warning(f"Ollama _resolve exception for {agent_id}: {type(e).__name__}: {e}")
@@ -119,7 +147,9 @@ class RealLLMOrchestrator:
                 else:
                     future.set_result({"success": False, "error": str(e)})
 
-        asyncio.create_task(_resolve())
+        task = asyncio.create_task(_resolve())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
         return future
 
     async def _call_ollama(self, prompt: str) -> dict:

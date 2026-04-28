@@ -7,6 +7,8 @@ router = APIRouter()
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
+        self.latest_snapshot: dict | None = None
+        self.latest_snapshot: dict | None = None
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -36,6 +38,17 @@ manager = ConnectionManager()
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+
+    # Send initial full snapshot if available
+    if manager.latest_snapshot:
+        try:
+            await websocket.send_json({
+                "type": "full_snapshot",
+                "payload": manager.latest_snapshot,
+            })
+        except Exception:
+            pass  # Non-critical — client will catch up via deltas
+
     try:
         while True:
             await websocket.receive_json()

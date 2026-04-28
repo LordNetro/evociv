@@ -69,6 +69,10 @@ class SimulationEngine:
             self.llm = MockLLMOrchestrator()
 
         self.builder = WorldSnapshotBuilder(world, agents)
+        self._latest_full_snapshot: Optional[dict] = None
+
+        # Background task tracking
+        self._background_tasks: set[asyncio.Task] = set()
 
         # State tracking
         self._discovered_set: set[tuple[str, int, int]] = set()
@@ -87,6 +91,9 @@ class SimulationEngine:
     async def stop(self) -> None:
         self.running = False
         self._paused.set()  # Unblock if paused
+        # Cancel background tasks
+        for task in list(self._background_tasks):
+            task.cancel()
         if self._tick_task:
             self._tick_task.cancel()
             try:
@@ -107,6 +114,10 @@ class SimulationEngine:
     @property
     def is_paused(self) -> bool:
         return not self._paused.is_set()
+
+    @property
+    def latest_snapshot(self) -> Optional[dict]:
+        return self._latest_full_snapshot
 
     # ------------------------------------------------------------------
     # Tick loop
@@ -205,9 +216,16 @@ class SimulationEngine:
             except Exception as e:
                 logger.error(f"Broadcast error: {e}")
 
-        # 10. Log to SQLite (fire and forget)
+        # 10. Store full snapshot for new WS clients
+        self._latest_full_snapshot = self.builder.build(tick, all_events).model_dump()
+        if self.ws_manager:
+            self.ws_manager.latest_snapshot = self._latest_full_snapshot
+
+        # 11. Log to SQLite (fire and forget)
         if self.db_session_factory:
-            asyncio.create_task(self._log_to_db(tick, snapshot, all_events))
+            task = asyncio.create_task(self._log_to_db(tick, snapshot, all_events))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
     # ------------------------------------------------------------------
     # Needs & death

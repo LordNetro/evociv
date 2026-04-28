@@ -59,6 +59,7 @@ class Agent:
 
     # Consciousness
     last_thought: str = ""
+    system_prompt: str = ""
     monologue_history: list = field(default_factory=list)
 
 

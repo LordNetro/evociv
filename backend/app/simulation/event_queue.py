@@ -28,7 +28,6 @@ class SimEvent:
 class EventQueue:
     def __init__(self) -> None:
         self._pending: list[SimEvent] = []
-        self._last_proximity: dict[frozenset, int] = {}  # Pair cooldown tracking
 
     def push(
         self,
@@ -69,7 +68,6 @@ def check_proximity_encounters(
     agents: list[Agent],
     radius: float = 3.0,
     current_tick: int = 0,
-    cooldown_ticks: int = 10,
 ) -> list[SimEvent]:
     """
     Check all agent pairs for proximity-based encounters.

@@ -75,6 +75,7 @@ app.include_router(ws_router)
 @app.get("/health")
 async def health(request: Request):
     engine = getattr(request.app.state, "engine", None)
+    llm = getattr(request.app.state, "llm", None)
     if engine is None:
         return {"status": "initializing", "tick_rate": settings.tick_rate, "engine_running": False}
     return {
@@ -84,4 +85,9 @@ async def health(request: Request):
         "tick": engine.tick_count,
         "agents": len(engine.agents),
         "paused": engine.is_paused,
+        "llm": {
+            "model": settings.llm_model,
+            "available": llm.is_available if llm else None,
+            "fallback_to_mock": settings.llm_fallback_to_mock,
+        },
     }

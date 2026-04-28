@@ -161,7 +161,7 @@ class MockLLMOrchestrator:
         self.success_rate = success_rate
         self._pending: dict[str, asyncio.Future] = {}
 
-    def build_prompt(self, agent: Agent) -> str:
+    def build_prompt(self, agent: Agent, world=None) -> str:
         """Build a mock prompt string from agent state."""
         return (
             f"Mock prompt for {agent.name}: "

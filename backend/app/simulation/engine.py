@@ -8,7 +8,7 @@ import time
 from typing import Optional
 
 from app.core.config import settings
-from app.simulation.agent import Agent, FSM, MockLLMOrchestrator
+from app.simulation.agent import Agent, FSM
 from app.simulation.actions import (
     ActionType,
     REGISTRY,
@@ -42,6 +42,7 @@ class SimulationEngine:
         agents: list[Agent],
         ws_manager=None,
         db_session_factory=None,
+        llm_orchestrator=None,
     ):
         self.world = world
         self.agents = agents
@@ -57,7 +58,14 @@ class SimulationEngine:
         # Subsystems
         self.fsms = {agent.id: FSM() for agent in agents}  # One FSM per agent
         self.event_queue = EventQueue()
-        self.llm = MockLLMOrchestrator()
+
+        # LLM orchestrator: use injected one, or create mock as fallback
+        if llm_orchestrator is not None:
+            self.llm = llm_orchestrator
+        else:
+            from app.simulation.agent import MockLLMOrchestrator
+            self.llm = MockLLMOrchestrator()
+
         self.builder = WorldSnapshotBuilder(world, agents)
 
         # State tracking
@@ -428,7 +436,7 @@ class SimulationEngine:
     def _fsm_llm_trigger(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Queue an async LLM call."""
         if not agent.llm_call_pending:
-            prompt = self.llm.build_prompt(agent)
+            prompt = self.llm.build_prompt(agent, self.world)
             agent.llm_future = self.llm.call_async(agent.id, prompt)
             agent.llm_call_pending = True
             agent.last_thought = "Thinking about what to do next..."

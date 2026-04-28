@@ -9,6 +9,13 @@ class Settings(BaseSettings):
     tick_rate: float = 0.1  # seconds per tick (10 ticks/sec)
     database_url: str = "sqlite+aiosqlite:///./evociv.db"
 
+    # LLM settings
+    llm_enabled: bool = True
+    llm_model: str = "ollama/llama3.2"
+    llm_base_url: str = "http://localhost:11434"
+    llm_timeout: int = 30  # seconds
+    llm_fallback_to_mock: bool = True  # Use mock if real LLM fails
+
     model_config = {"env_prefix": "EVOCIV_", "env_file": ".env"}
 
 

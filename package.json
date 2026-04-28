@@ -2,9 +2,9 @@
   "private": true,
   "workspaces": ["frontend"],
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev": "concurrently -k --graceful-timeout=1000 \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "cd backend && uvicorn app.main:app --reload --port 8765",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --port 8765 --timeout-keep-alive=5",
     "lint": "cd frontend && npm run lint",
     "type-check": "cd frontend && npm run check"
   },

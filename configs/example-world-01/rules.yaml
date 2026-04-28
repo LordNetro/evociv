@@ -1,0 +1,25 @@
+world_rules:
+  day_night_cycle: false
+  seasons: false
+  
+  hunger:
+    decay_rate: 0.1        # per tick
+    critical_threshold: 15  # % below which agent seeks food
+    starvation_damage: 2    # health lost per tick when starving
+    
+  thirst:
+    decay_rate: 0.15
+    critical_threshold: 15
+    dehydration_damage: 3
+    
+  energy:
+    decay_rate: 0.05
+    rest_recovery: 0.5
+    
+  combat:
+    enabled: true
+    base_damage: 10
+    
+  relationships:
+    encounter_radius: 3     # tiles
+    friendship_decay: 0.01  # per tick without interaction

@@ -1,0 +1,14 @@
+{
+  "name": "Example World 01",
+  "description": "A small fertile valley with water and forest",
+  "seed": 42,
+  "grid_width": 50,
+  "grid_height": 50,
+  "tick_rate": 0.1,
+  "resources": {
+    "trees": { "count": 80, "regeneration_rate": 0.01 },
+    "water": { "count": 15, "regeneration_rate": 0.0 },
+    "berries": { "count": 40, "regeneration_rate": 0.05 }
+  },
+  "starting_agents": 5
+}

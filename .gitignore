@@ -1,5 +1,6 @@
 # ─── Python ───────────────────────────────────────────
 __pycache__/
+**/.pytest_cache/
 *.py[cod]
 *$py.class
 *.so
@@ -41,6 +42,9 @@ simulation_dumps/
 # ─── ChromaDB ─────────────────────────────────────────
 chroma_data/
 vector_store/
+
+# ─── AI Agent Infrastructure ─────────────────────────
+.atl/
 
 # ─── Env ──────────────────────────────────────────────
 .env

@@ -1,0 +1,48 @@
+# ─── Python ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+*.db
+*.sqlite3
+
+# ─── Node / SvelteKit ────────────────────────────────
+node_modules/
+frontend/.svelte-kit/
+frontend/build/
+frontend/.env
+frontend/.env.local
+*.tsbuildinfo
+
+# ─── IDE ──────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+.vs/
+
+# ─── OS ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+
+# ─── Simulation ──────────────────────────────────────
+*.simstate
+simulation_dumps/
+
+# ─── ChromaDB ─────────────────────────────────────────
+chroma_data/
+vector_store/
+
+# ─── Env ──────────────────────────────────────────────
+.env
+.env.local
+*.key

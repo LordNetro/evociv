@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Evociv Discussion
+    url: https://github.com/LordNetro/evociv/discussions
+    about: Please use Discussions for questions, ideas, and general conversation.

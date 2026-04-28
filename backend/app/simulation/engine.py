@@ -37,6 +37,8 @@ CRITICAL_HUNGER = 70       # hunger above this triggers instinct food seeking
 CRITICAL_THIRST = 70       # thirst above this triggers instinct water seeking
 CRITICAL_LLM_TRIGGER = 85  # only LLM trigger on critical (for higher-level plans)
 INTERACTION_RADIUS = 3.0  # tiles
+REPRODUCTION_COOLDOWN = 500  # ticks between reproductions
+MAX_POPULATION = 20
 
 
 class SimulationEngine:
@@ -344,6 +346,8 @@ class SimulationEngine:
         import random
         avg_x = (parent1.position[0] + parent2.position[0]) / 2 + random.uniform(-1, 1)
         avg_y = (parent1.position[1] + parent2.position[1]) / 2 + random.uniform(-1, 1)
+        avg_x = max(1, min(self.world.width - 2, avg_x))
+        avg_y = max(1, min(self.world.height - 2, avg_y))
 
         def inherit(a1_val, a2_val):
             return max(0, min(100, (a1_val + a2_val) // 2 + random.randint(-10, 10)))
@@ -452,23 +456,31 @@ class SimulationEngine:
                 return
 
         # ── 6. Reproduce (lax thresholds — civilization first!) ──
-        if (agent.energy > 30 and agent.hunger < 70 and agent.thirst < 70):
-            partner = self._find_reproduction_partner(agent)
-            if partner:
-                agent._is_reproducing = True
-                partner._is_reproducing = True
-                agent.current_action = "reproduce"
-                agent.current_action_emoji = "❤️"
-                agent.action_duration = get_action_duration(ActionType.REPRODUCE, agent)
-                agent.action_progress = 0.0
-                partner.current_action = "reproducing"
-                partner.current_action_emoji = "❤️"
-                partner.action_duration = get_action_duration(ActionType.REPRODUCE, partner)
-                partner.action_progress = 0.0
-                agent._reproduce_partner_id = partner.id
-                partner._reproduce_partner_id = agent.id
-                fsm.transition_to("executing")
-                return
+        if len(self.agents) >= MAX_POPULATION:
+            # Skip reproduction, population is high enough
+            pass  # fall through to LLM trigger
+        elif (agent.energy > 30 and agent.hunger < 70 and agent.thirst < 70):
+            last_repro = getattr(agent, '_last_reproduction_tick', -999)
+            if tick - last_repro < REPRODUCTION_COOLDOWN:
+                # Skip reproduction, go to LLM
+                pass  # fall through to LLM trigger
+            else:
+                partner = self._find_reproduction_partner(agent)
+                if partner:
+                    agent._is_reproducing = True
+                    partner._is_reproducing = True
+                    agent.current_action = "reproduce"
+                    agent.current_action_emoji = "❤️"
+                    agent.action_duration = get_action_duration(ActionType.REPRODUCE, agent)
+                    agent.action_progress = 0.0
+                    partner.current_action = "reproduce"
+                    partner.current_action_emoji = "❤️"
+                    partner.action_duration = get_action_duration(ActionType.REPRODUCE, partner)
+                    partner.action_progress = 0.0
+                    agent._reproduce_partner_id = partner.id
+                    partner._reproduce_partner_id = agent.id
+                    fsm.transition_to("executing")
+                    return
 
         # Needs met → try LLM for higher-level planning
         if not agent.active_plan and not agent.llm_call_pending:
@@ -596,6 +608,7 @@ class SimulationEngine:
                     if a:
                         a._is_reproducing = False
                         a._reproduce_partner_id = None
+                        a._last_reproduction_tick = tick
 
             # Advance plan
             agent.action_progress = 0.0

@@ -110,8 +110,9 @@ class RealLLMOrchestrator:
                 future.set_result(result)
 
             except Exception as e:
+                logger.warning(f"Ollama _resolve exception for {agent_id}: {type(e).__name__}: {e}")
                 if settings.llm_fallback_to_mock:
-                    logger.debug(f"Ollama call failed ({e}), mock fallback for {agent_id}")
+                    logger.debug(f"Mock fallback for {agent_id}")
                     mock_future = self._mock.call_async(agent_id, prompt)
                     mock_result = await mock_future
                     future.set_result(mock_result)

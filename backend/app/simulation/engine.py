@@ -435,12 +435,23 @@ class SimulationEngine:
 
     def _fsm_llm_trigger(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Queue an async LLM call."""
-        if not agent.llm_call_pending:
-            prompt = self.llm.build_prompt(agent, self.world)
-            agent.llm_future = self.llm.call_async(agent.id, prompt)
-            agent.llm_call_pending = True
-            agent.last_thought = "Thinking about what to do next..."
-            self.builder.mark_agent_dirty(agent.id)
+        if agent.llm_call_pending:
+            fsm.transition_to("llm_waiting")
+            return
+
+        # Cooldown: don't retry LLM more than once every 15 ticks
+        last = getattr(agent, '_last_llm_tick', 0)
+        if tick - last < 15:
+            agent.last_thought = "(waiting before retrying)"
+            fsm.transition_to("llm_waiting")
+            return
+
+        prompt = self.llm.build_prompt(agent, self.world)
+        agent.llm_future = self.llm.call_async(agent.id, prompt)
+        agent.llm_call_pending = True
+        agent._last_llm_tick = tick
+        agent.last_thought = "Thinking about what to do next..."
+        self.builder.mark_agent_dirty(agent.id)
         fsm.transition_to("llm_waiting")
 
     def _fsm_llm_waiting(self, agent: Agent, fsm: FSM, tick: int) -> None:
@@ -463,11 +474,9 @@ class SimulationEngine:
                         f"{plan.get('intention', '')}"
                     )
                 else:
-                    logger.warning(
-                        f"{agent.name} LLM call failed: "
-                        f"{result.get('error', 'unknown')}"
-                    )
-                    agent.last_thought = "My plan failed, I'll rely on instinct."
+                    err = result.get('error', 'unknown')
+                    logger.warning(f"{agent.name} LLM call failed: [{err}] (result keys: {list(result.keys())})")
+                    agent.last_thought = f"Plan failed: {err}"
             except Exception as e:
                 logger.error(f"{agent.name} LLM future error: {e}")
 

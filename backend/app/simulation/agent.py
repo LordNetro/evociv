@@ -77,7 +77,7 @@ class FSM:
         "moving": {"executing", "evaluate"},
         "executing": {"moving", "evaluate"},
         "llm_trigger": {"llm_waiting"},
-        "llm_waiting": {"moving", "evaluate"},
+        "llm_waiting": {"moving", "evaluate", "executing"},
     }
 
     def __init__(self) -> None:

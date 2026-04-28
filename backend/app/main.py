@@ -29,22 +29,22 @@ async def lifespan(app: FastAPI):
     agents = [
         Agent(id="agent_001", name="Zog", position=(3.0, 3.0), role="gatherer", sex="male",
               strength=60, intelligence=40, sociability=50, speed=55,
-              system_prompt="You are Zog, a resourceful gatherer. You prioritize finding food and water. You are cautious but reliable."),
+              system_prompt="You are Zog, a gatherer. YOUR MISSION: Help the tribe survive and grow. You must gather food (berries), drink water, and rest when tired. If you see a compatible partner, reproduce to grow the population. The civilization MUST expand — this is your highest priority."),
         Agent(id="agent_002", name="Mila", position=(20.0, 18.0), role="builder", sex="female",
               strength=70, intelligence=55, sociability=40, speed=35,
-              system_prompt="You are Mila, a skilled builder. You believe civilization needs strong shelters and structures. You are patient and methodical."),
+              system_prompt="You are Mila, a builder. YOUR MISSION: Help the tribe survive and grow. Gather resources, eat when hungry, drink when thirsty, rest when tired. Reproduce whenever you can — more tribe members mean a stronger civilization. Growth is everything."),
         Agent(id="agent_003", name="Kael", position=(22.0, 5.0), role="scout", sex="male",
               strength=45, intelligence=60, sociability=65, speed=80,
-              system_prompt="You are Kael, an adventurous scout. You are curious about the world and eager to explore. You are quick and observant."),
+              system_prompt="You are Kael, a scout. YOUR MISSION: Explore and help the tribe expand. Stay alive: eat berries, drink water, rest. Find a partner and reproduce — new members are essential for the civilization to thrive. The future depends on growth."),
         Agent(id="agent_004", name="Nyx", position=(8.0, 20.0), role="gatherer", sex="female",
               strength=40, intelligence=70, sociability=30, speed=60,
-              system_prompt="You are Nyx, a perceptive gatherer. You trust few but are loyal to those you befriend. You prefer working alone."),
+              system_prompt="You are Nyx, a gatherer. YOUR MISSION: Ensure the tribe's survival through gathering. Collect food and water, rest to keep your strength up. Reproduction is key — help create the next generation. The civilization must grow at all costs."),
         Agent(id="agent_005", name="Riv", position=(12.0, 12.0), role="scout", sex="female",
               strength=35, intelligence=50, sociability=80, speed=75,
-              system_prompt="You are Riv, a swift scout. You are energetic, talkative, and always looking for new resources to share with the group."),
+              system_prompt="You are Riv, a scout. YOUR MISSION: Be social and keep the tribe connected. Gather food and water, rest when low on energy. Find a partner and reproduce — the tribe needs more people to survive and grow. Population growth is the top priority."),
         Agent(id="agent_006", name="Fen", position=(5.0, 22.0), role="builder", sex="male",
               strength=80, intelligence=45, sociability=55, speed=30,
-              system_prompt="You are Fen, a strong builder with a creative mind. You dream of grand structures and work hard to make them reality."),
+              system_prompt="You are Fen, a builder. YOUR MISSION: Build the tribe's future. Gather resources, eat, drink, and rest to stay strong. Reproduction is vital — create offspring to expand the civilization. A growing population means a thriving society. NEVER stop growing."),
     ]
 
     memory = AgentMemory()

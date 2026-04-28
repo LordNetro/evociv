@@ -319,21 +319,23 @@ class SimulationEngine:
         fsm.transition_to("evaluate")
 
     def _find_reproduction_partner(self, agent: Agent) -> Optional[Agent]:
-        """Find a compatible reproduction partner nearby."""
+        """Find a compatible reproduction partner nearby (lax thresholds)."""
         for other in self.agents:
             if other.id == agent.id:
                 continue
             if other.sex == agent.sex:
                 continue
-            if other.energy <= 50 or other.hunger >= 50 or other.thirst >= 50:
+            if other.energy <= 20 or other.hunger >= 80 or other.thirst >= 80:
                 continue
             if getattr(other, '_is_reproducing', False):
+                continue
+            if getattr(other, 'age', 0) < 100:  # too young
                 continue
             dist = math.hypot(
                 agent.position[0] - other.position[0],
                 agent.position[1] - other.position[1],
             )
-            if dist <= INTERACTION_RADIUS:
+            if dist <= INTERACTION_RADIUS * 2:  # wider range
                 return other
         return None
 
@@ -369,47 +371,63 @@ class SimulationEngine:
         return random.choice(names)
 
     def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
-        """Check needs and decide next state."""
-        # ── Critical needs → handle with FSM instinct ──
-        if agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
-            nearby = self.world.get_nearby_resources(agent.position, radius=8)
-            food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
-            water_nearby = [r for r in nearby if r[2] == "water"]
+        """Check needs and decide next state.
+        
+        Priority order:
+        1. Eat from inventory if hungry
+        2. Drink if thirsty and at water
+        3. Gather food if hungry and at source
+        4. Rest if energy is low
+        5. Move toward food/water if critical
+        6. Reproduce if conditions met (lax thresholds)
+        7. LLM for higher-level planning
+        """
+        nearby = self.world.get_nearby_resources(agent.position, radius=8)
+        food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
+        water_nearby = [r for r in nearby if r[2] == "water"]
 
-            # PRIORITY 1: Eat food from inventory if hungry
-            if agent.hunger > CRITICAL_HUNGER:
-                berries = agent.inventory.get("berries", 0)
-                if berries > 0:
-                    agent.current_action = "eat"
-                    agent.current_action_emoji = "🍎"
+        # ── 1. Eat from inventory if hungry ──
+        if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
+            agent.current_action = "eat"
+            agent.current_action_emoji = "🍎"
+            agent.action_duration = 3
+            agent.action_progress = 0.0
+            fsm.transition_to("executing")
+            return
+
+        # ── 2. Drink if thirsty and at water ──
+        if agent.thirst > CRITICAL_THIRST:
+            for r in water_nearby:
+                if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
+                    agent.current_action = "drink"
+                    agent.current_action_emoji = "💧"
                     agent.action_duration = 3
                     agent.action_progress = 0.0
                     fsm.transition_to("executing")
                     return
 
-            # PRIORITY 2: Drink if thirsty and at water
-            if agent.thirst > CRITICAL_THIRST:
-                for r in water_nearby:
-                    if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
-                        agent.current_action = "drink"
-                        agent.current_action_emoji = "💧"
-                        agent.action_duration = 3
-                        agent.action_progress = 0.0
-                        fsm.transition_to("executing")
-                        return
+        # ── 3. Gather food if hungry and at food source ──
+        if agent.hunger > CRITICAL_HUNGER:
+            for r in food_nearby:
+                if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
+                    agent.current_action = "gather"
+                    agent.current_action_emoji = "🫐"
+                    agent.action_duration = 3
+                    agent.action_progress = 0.0
+                    fsm.transition_to("executing")
+                    return
 
-            # PRIORITY 3: Gather food if hungry and at food source
-            if agent.hunger > CRITICAL_HUNGER:
-                for r in food_nearby:
-                    if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
-                        agent.current_action = "gather"
-                        agent.current_action_emoji = "🫐"
-                        agent.action_duration = 3
-                        agent.action_progress = 0.0
-                        fsm.transition_to("executing")
-                        return
+        # ── 4. Rest if energy is low ──
+        if agent.energy < 30:
+            agent.current_action = "rest"
+            agent.current_action_emoji = "💤"
+            agent.action_duration = get_action_duration(ActionType.REST, agent)
+            agent.action_progress = 0.0
+            fsm.transition_to("executing")
+            return
 
-            # PRIORITY 4: Move toward resource
+        # ── 5. Move toward food/water if critical ──
+        if agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
             if agent.thirst > agent.hunger and water_nearby:
                 target = (water_nearby[0][0], water_nearby[0][1])
                 agent.current_action = "seeking water"
@@ -421,7 +439,7 @@ class SimulationEngine:
                 agent.move_progress = 0.0
                 fsm.transition_to("moving")
                 return
-            elif food_nearby and agent.inventory.get("berries", 0) == 0:
+            elif food_nearby:
                 target = (food_nearby[0][0], food_nearby[0][1])
                 agent.current_action = "seeking food"
                 agent.current_action_emoji = "🍎"
@@ -433,9 +451,8 @@ class SimulationEngine:
                 fsm.transition_to("moving")
                 return
 
-        # -- Reproduction opportunity --
-        if (agent.sociability > 60 and agent.energy > 50 and
-            agent.hunger < 50 and agent.thirst < 50):
+        # ── 6. Reproduce (lax thresholds — civilization first!) ──
+        if (agent.energy > 30 and agent.hunger < 70 and agent.thirst < 70):
             partner = self._find_reproduction_partner(agent)
             if partner:
                 agent._is_reproducing = True
@@ -663,6 +680,13 @@ class SimulationEngine:
                 agent.current_action = "eat"
                 agent.current_action_emoji = "🍎"
                 agent.action_duration = 3
+                agent.action_progress = 0.0
+                fsm.transition_to("executing")
+            # Rest if energy low
+            elif agent.energy < 30:
+                agent.current_action = "rest"
+                agent.current_action_emoji = "💤"
+                agent.action_duration = get_action_duration(ActionType.REST, agent)
                 agent.action_progress = 0.0
                 fsm.transition_to("executing")
             # Otherwise move toward nearest resource

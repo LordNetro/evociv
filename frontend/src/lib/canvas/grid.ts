@@ -3,7 +3,7 @@ import { Camera } from './camera';
 export interface TileData {
   x: number;
   y: number;
-  resourceType: string | null;
+  resource_type: string | null;
   amount: number;
 }
 
@@ -49,7 +49,7 @@ export class Grid {
         const tile = this.tiles.get(key);
 
         // Tile background
-        this.ctx.fillStyle = tile?.resourceType ? '#3d2b1f' : '#2d1b0e';
+        this.ctx.fillStyle = tile?.resource_type ? '#3d2b1f' : '#2d1b0e';
         this.ctx.fillRect(px, py, ts, ts);
 
         // Grid line
@@ -58,7 +58,7 @@ export class Grid {
         this.ctx.strokeRect(px, py, ts, ts);
 
         // Resource
-        if (tile?.resourceType) {
+        if (tile?.resource_type) {
           this.drawResource(tile, px, py, ts);
         }
       }
@@ -70,7 +70,7 @@ export class Grid {
     const cy = py + ts / 2;
     const s = ts * 0.25;
 
-    switch (tile.resourceType) {
+    switch (tile.resource_type) {
       case 'tree':
         this.ctx.fillStyle = '#2e7d32';
         this.ctx.beginPath();

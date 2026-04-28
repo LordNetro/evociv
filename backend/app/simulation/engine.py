@@ -25,7 +25,7 @@ from app.simulation.snapshot import WorldSnapshotBuilder
 from app.simulation.world import World
 
 logger = logging.getLogger("evociv.engine")
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)
 
 # Constants
 HUNGER_DECAY = 0.1        # per tick
@@ -283,11 +283,31 @@ class SimulationEngine:
 
     def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Check needs and decide next state."""
-    # Critical needs → handle with FSM instinct
-    if agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
+        # Critical needs → handle with FSM instinct
+        if agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
             nearby = self.world.get_nearby_resources(agent.position, radius=8)
             food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
             water_nearby = [r for r in nearby if r[2] == "water"]
+
+            # If already at resource, execute action directly
+            if agent.thirst > agent.hunger:
+                for r in water_nearby:
+                    if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
+                        agent.current_action = "drink"
+                        agent.current_action_emoji = "💧"
+                        agent.action_duration = 3
+                        agent.action_progress = 0.0
+                        fsm.transition_to("executing")
+                        return
+            else:
+                for r in food_nearby:
+                    if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
+                        agent.current_action = "gather"
+                        agent.current_action_emoji = "🫐"
+                        agent.action_duration = 3
+                        agent.action_progress = 0.0
+                        fsm.transition_to("executing")
+                        return
 
             if agent.thirst > agent.hunger and water_nearby:
                 target = (water_nearby[0][0], water_nearby[0][1])
@@ -509,6 +529,11 @@ class SimulationEngine:
                 if target and not agent.move_path:
                     start = (int(agent.position[0]), int(agent.position[1]))
                     agent.move_path = self.world.find_path(start, target)
+                    agent.target_position = (float(target[0]), float(target[1]))
+                    agent.current_action = "seeking water" if agent.thirst > agent.hunger else "seeking food"
+                    agent.current_action_emoji = "💧" if agent.thirst > agent.hunger else "🍎"
+                    agent.move_progress = 0.0
+                    fsm.transition_to("moving")
 
     # ------------------------------------------------------------------
     # LLM polling

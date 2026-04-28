@@ -14,7 +14,7 @@ from app.ai.prompts import build_agent_prompt
 from app.ai.memory import AgentMemory
 
 logger = logging.getLogger("evociv.llm")
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)
 
 
 class RealLLMOrchestrator:

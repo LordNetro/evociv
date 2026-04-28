@@ -515,8 +515,18 @@ class SimulationEngine:
             agent.current_action_emoji = "💤"
             fsm.transition_to("idle")
 
+    def _is_tile_occupied(self, x: int, y: int, exclude_id: str | None = None) -> bool:
+        """Check if a tile is occupied by another agent."""
+        for other in self.agents:
+            if exclude_id and other.id == exclude_id:
+                continue
+            ox, oy = int(other.position[0]), int(other.position[1])
+            if ox == x and oy == y:
+                return True
+        return False
+
     def _fsm_moving(self, agent: Agent, fsm: FSM, tick: int) -> None:
-        """Advance along path toward target."""
+        """Advance along path toward target with collision avoidance."""
         if not agent.move_path:
             # No path → recalculate or skip
             if agent.target_position:
@@ -532,10 +542,32 @@ class SimulationEngine:
             fsm.transition_to("evaluate")
             return
 
-        # Advance one step along path
-        next_pos = agent.move_path.pop(0)
-        agent.position = (float(next_pos[0]), float(next_pos[1]))
-        self.builder.mark_agent_dirty(agent.id)
+        # ── Collision avoidance ──
+        next_pos = agent.move_path[0]
+        nx, ny = next_pos
+
+        if self._is_tile_occupied(nx, ny, agent.id):
+            # Tile occupied — try to nudge to a nearby free tile
+            moved = False
+            for dx, dy in [(1,0), (-1,0), (0,1), (0,-1), (1,1), (-1,1), (1,-1), (-1,-1)]:
+                adj_x, adj_y = nx + dx, ny + dy
+                if (self.world.is_passable(adj_x, adj_y) and 
+                    not self._is_tile_occupied(adj_x, adj_y, agent.id)):
+                    agent.position = (float(adj_x), float(adj_y))
+                    self.builder.mark_agent_dirty(agent.id)
+                    moved = True
+                    break
+            if not moved:
+                # Can't move anywhere — wait a tick
+                self.builder.mark_agent_dirty(agent.id)
+                return  # stay in moving, try again next tick
+            # Even if we nudged, we still consumed the path step when we retry
+            agent.move_path.pop(0)
+        else:
+            # Tile is free — advance normally
+            agent.move_path.pop(0)
+            agent.position = (float(nx), float(ny))
+            self.builder.mark_agent_dirty(agent.id)
 
         # Check for resource discovery
         discovery_events = check_resource_discoveries(

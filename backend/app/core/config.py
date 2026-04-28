@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     llm_enabled: bool = True
     llm_model: str = "llama3.2"
     llm_base_url: str = "http://localhost:11434"
-    llm_timeout: int = 30  # seconds
+    llm_timeout: int = 60  # seconds (first call is slow due to Ollama cold start)
     llm_fallback_to_mock: bool = True  # Use mock if real LLM fails
 
     model_config = {"env_prefix": "EVOCIV_", "env_file": ".env"}

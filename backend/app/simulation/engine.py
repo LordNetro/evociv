@@ -31,7 +31,9 @@ logger.setLevel(logging.WARNING)
 HUNGER_DECAY = 0.1        # per tick
 THIRST_DECAY = 0.15       # per tick
 ENERGY_DECAY = 0.05       # per tick
-CRITICAL_THRESHOLD = 15   # % below which agent seeks resource
+CRITICAL_HUNGER = 70       # hunger above this triggers instinct food seeking
+CRITICAL_THIRST = 70       # thirst above this triggers instinct water seeking
+CRITICAL_LLM_TRIGGER = 85  # only LLM trigger on critical (for higher-level plans)
 INTERACTION_RADIUS = 3.0  # tiles
 
 
@@ -281,8 +283,8 @@ class SimulationEngine:
 
     def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Check needs and decide next state."""
-        # Critical needs → handle with FSM instinct
-        if agent.hunger > 90 or agent.thirst > 90:
+    # Critical needs → handle with FSM instinct
+    if agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
             nearby = self.world.get_nearby_resources(agent.position, radius=8)
             food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
             water_nearby = [r for r in nearby if r[2] == "water"]
@@ -439,9 +441,9 @@ class SimulationEngine:
             fsm.transition_to("llm_waiting")
             return
 
-        # Cooldown: don't retry LLM more than once every 15 ticks
-        last = getattr(agent, '_last_llm_tick', 0)
-        if tick - last < 15:
+        # Cooldown: don't retry LLM more than once every 30 ticks after a failed attempt
+        last = getattr(agent, '_last_llm_tick', -999)
+        if last > 0 and tick - last < 30:
             agent.last_thought = "(waiting before retrying)"
             fsm.transition_to("llm_waiting")
             return
@@ -456,7 +458,12 @@ class SimulationEngine:
 
     def _fsm_llm_waiting(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Wait for LLM response while acting on instinct."""
-        if agent.llm_future and agent.llm_future.done():
+        # If no future is set (cooldown or first trigger misfire), go back to evaluate
+        if not agent.llm_future:
+            fsm.transition_to("evaluate")
+            return
+
+        if agent.llm_future.done():
             try:
                 result = agent.llm_future.result()
                 if result.get("success") and result.get("data"):
@@ -475,7 +482,7 @@ class SimulationEngine:
                     )
                 else:
                     err = result.get('error', 'unknown')
-                    logger.warning(f"{agent.name} LLM call failed: [{err}] (result keys: {list(result.keys())})")
+                    logger.warning(f"{agent.name} LLM call failed: [{err}]")
                     agent.last_thought = f"Plan failed: {err}"
             except Exception as e:
                 logger.error(f"{agent.name} LLM future error: {e}")
@@ -485,12 +492,13 @@ class SimulationEngine:
             self.builder.mark_agent_dirty(agent.id)
             fsm.transition_to("evaluate")
         else:
-            # Still waiting — act on instinct: move toward nearest resource
+            # Still waiting — act on instinct
             agent.last_thought = "Waiting for guidance..."
             agent.current_action = "waiting"
             agent.current_action_emoji = "⏳"
             self.builder.mark_agent_dirty(agent.id)
 
+            # Instinct: if critically hungry/thirsty, move toward nearest resource
             if agent.hunger > 80 or agent.thirst > 80:
                 nearby = self.world.get_nearby_resources(agent.position, radius=5)
                 target = None

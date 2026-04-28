@@ -22,7 +22,7 @@ export function connect() {
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      if (data.type === 'snapshot') {
+      if (data.type === 'snapshot' || data.type === 'full_snapshot') {
         simulationStore.updateFromSnapshot(data.payload);
       }
     } catch (e) {

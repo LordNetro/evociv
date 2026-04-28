@@ -91,12 +91,23 @@ export class Entities {
 
   updateFromSnapshot(data: any): void {
     if (!data?.agents) return;
-    // Remove dead agents
+    
+    // Remove dead agents (explicitly from removed_agents list)
     if (data.removed_agents) {
       for (const id of data.removed_agents) {
         this.agents.delete(id);
       }
     }
+    
+    // Remove agents that are no longer in the snapshot at all
+    // (they died but removed_agents was already cleared in a previous tick)
+    const liveIds = new Set(Object.keys(data.agents));
+    for (const id of this.agents.keys()) {
+      if (!liveIds.has(id)) {
+        this.agents.delete(id);
+      }
+    }
+    
     for (const [id, state] of Object.entries(data.agents) as [string, any][]) {
       let a = this.agents.get(id);
       if (!a) {

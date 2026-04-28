@@ -25,7 +25,8 @@ class ConnectionManager:
             except Exception:
                 dead.append(conn)
         for conn in dead:
-            self.active_connections.remove(conn)
+            if conn in self.active_connections:
+                self.active_connections.remove(conn)
 
     @property
     def client_count(self) -> int:

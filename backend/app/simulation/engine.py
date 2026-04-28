@@ -534,26 +534,38 @@ class SimulationEngine:
             return
         try:
             async with self.db_session_factory() as session:
+                from sqlalchemy import select
                 from app.db.models import TickMetric as TickMetricModel
-                metrics = TickMetricModel(
-                    tick=tick,
-                    population=snapshot.metrics.population,
-                    avg_hunger=snapshot.metrics.avg_hunger,
-                    avg_thirst=snapshot.metrics.avg_thirst,
-                    avg_health=snapshot.metrics.avg_health,
-                    avg_energy=snapshot.metrics.avg_energy,
-                )
-                session.add(metrics)
-
                 from app.db.models import SimEvent as SimEventModel
+
+                # Upsert tick_metrics (tick is unique, may already exist from previous run)
+                existing = await session.execute(
+                    select(TickMetricModel).where(TickMetricModel.tick == tick)
+                )
+                metrics = existing.scalar_one_or_none()
+                if metrics:
+                    metrics.population = snapshot.metrics.population
+                    metrics.avg_hunger = snapshot.metrics.avg_hunger
+                    metrics.avg_thirst = snapshot.metrics.avg_thirst
+                    metrics.avg_health = snapshot.metrics.avg_health
+                    metrics.avg_energy = snapshot.metrics.avg_energy
+                else:
+                    session.add(TickMetricModel(
+                        tick=tick,
+                        population=snapshot.metrics.population,
+                        avg_hunger=snapshot.metrics.avg_hunger,
+                        avg_thirst=snapshot.metrics.avg_thirst,
+                        avg_health=snapshot.metrics.avg_health,
+                        avg_energy=snapshot.metrics.avg_energy,
+                    ))
+
                 for event in events:
-                    db_event = SimEventModel(
+                    session.add(SimEventModel(
                         tick=tick,
                         agent_id=event.agent_ids[0] if event.agent_ids else "",
                         event_type=event.type,
                         description=event.description,
-                    )
-                    session.add(db_event)
+                    ))
 
                 await session.commit()
         except Exception as e:

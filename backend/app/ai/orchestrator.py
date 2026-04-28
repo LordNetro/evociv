@@ -94,8 +94,12 @@ class RealLLMOrchestrator:
             logger.warning(f"LLM backend unavailable ({e}). Will use mock.")
             return False
 
-    async def call_async(self, agent_id: str, prompt: str) -> asyncio.Future:
-        """Call LLM asynchronously. Returns a Future that resolves with the response."""
+    def call_async(self, agent_id: str, prompt: str) -> asyncio.Future:
+        """Call LLM asynchronously. Returns a Future that resolves with the response.
+        
+        NOTE: This is NOT an async function. It creates a Future, launches a background
+        task, and returns the Future immediately (matching MockLLMOrchestrator's interface).
+        """
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self._pending[agent_id] = future
@@ -109,7 +113,6 @@ class RealLLMOrchestrator:
                     raise RuntimeError("LLM disabled or unavailable")
 
                 if result.get("success"):
-                    # Store the plan as a memory
                     plan = result.get("data", {})
                     intention = plan.get("intention", "")
                     reasoning = plan.get("reasoning", "")
@@ -118,7 +121,6 @@ class RealLLMOrchestrator:
                 future.set_result(result)
 
             except Exception as e:
-                # Fallback to mock
                 if settings.llm_fallback_to_mock:
                     logger.debug(f"LLM call failed ({e}), using mock fallback for {agent_id}")
                     mock_future = self._mock.call_async(agent_id, prompt)

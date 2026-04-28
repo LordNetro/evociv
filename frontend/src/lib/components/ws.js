@@ -8,55 +8,55 @@ let ws = null;
 let reconnectTimer = null;
 
 export function connect() {
-  if (ws?.readyState === WebSocket.OPEN) return;
+	if (ws?.readyState === WebSocket.OPEN) return;
 
-  const url = /** @type {string} */ (get(configStore).wsUrl);
-  ws = new WebSocket(url);
+	const url = /** @type {string} */ (get(configStore).wsUrl);
+	ws = new WebSocket(url);
 
-  ws.onopen = () => {
-    simulationStore.setConnected(true);
-    console.log('[WS] Connected to', url);
-  };
+	ws.onopen = () => {
+		simulationStore.setConnected(true);
+		console.log('[WS] Connected to', url);
+	};
 
-  /** @param {MessageEvent} event */
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.type === 'snapshot' || data.type === 'full_snapshot') {
-        simulationStore.updateFromSnapshot(data.payload);
-      }
-    } catch (e) {
-      console.error('[WS] Parse error:', e);
-    }
-  };
+	/** @param {MessageEvent} event */
+	ws.onmessage = (event) => {
+		try {
+			const data = JSON.parse(event.data);
+			if (data.type === 'snapshot' || data.type === 'full_snapshot') {
+				simulationStore.updateFromSnapshot(data.payload);
+			}
+		} catch (e) {
+			console.error('[WS] Parse error:', e);
+		}
+	};
 
-  ws.onclose = () => {
-    simulationStore.setConnected(false);
-    ws = null;
-    // Auto-reconnect after 3s
-    reconnectTimer = setTimeout(connect, 3000);
-  };
+	ws.onclose = () => {
+		simulationStore.setConnected(false);
+		ws = null;
+		// Auto-reconnect after 3s
+		reconnectTimer = setTimeout(connect, 3000);
+	};
 
-  /** @param {Event} err */
-  ws.onerror = (err) => {
-    console.error('[WS] Error:', err);
-    ws?.close();
-  };
+	/** @param {Event} err */
+	ws.onerror = (err) => {
+		console.error('[WS] Error:', err);
+		ws?.close();
+	};
 }
 
 export function disconnect() {
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  ws?.close();
-  ws = null;
+	if (reconnectTimer) clearTimeout(reconnectTimer);
+	ws?.close();
+	ws = null;
 }
 
 /** @param {any} data */
 export function send(data) {
-  if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(data));
-  }
+	if (ws?.readyState === WebSocket.OPEN) {
+		ws.send(JSON.stringify(data));
+	}
 }
 
 export function isConnected() {
-  return ws?.readyState === WebSocket.OPEN;
+	return ws?.readyState === WebSocket.OPEN;
 }

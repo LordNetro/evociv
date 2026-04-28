@@ -5,26 +5,26 @@ import { writable } from 'svelte/store';
  */
 
 const DEFAULT_CONFIG = {
-  gridWidth: 50,
-  gridHeight: 50,
-  tileSize: 32,
-  tickRate: 0.1,
-  wsUrl: 'ws://localhost:8765/ws',
+	gridWidth: 50,
+	gridHeight: 50,
+	tileSize: 32,
+	tickRate: 0.1,
+	wsUrl: 'ws://localhost:8765/ws'
 };
 
 function createConfigStore() {
-  const { subscribe, update } = writable({ ...DEFAULT_CONFIG });
+	const { subscribe, update } = writable({ ...DEFAULT_CONFIG });
 
-  return {
-    subscribe,
-    /** @param {Partial<ConfigState>} partial */
-    updateConfig(partial) {
-      update(state => ({ ...state, ...partial }));
-    },
-    reset() {
-      update(() => ({ ...DEFAULT_CONFIG }));
-    },
-  };
+	return {
+		subscribe,
+		/** @param {Partial<ConfigState>} partial */
+		updateConfig(partial) {
+			update((state) => ({ ...state, ...partial }));
+		},
+		reset() {
+			update(() => ({ ...DEFAULT_CONFIG }));
+		}
+	};
 }
 
 export const configStore = createConfigStore();

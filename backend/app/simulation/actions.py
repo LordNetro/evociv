@@ -17,6 +17,7 @@ class ActionType(str, Enum):
     EAT = "eat"
     GATHER = "gather"
     REST = "rest"
+    REPRODUCE = "reproduce"
 
 
 @dataclass
@@ -229,6 +230,16 @@ def handle_rest(
     )
 
 
+def handle_reproduce(
+    agent: Agent,
+    world: World | None = None,
+    target: tuple[int, int] | None = None,
+    step: dict | None = None,
+) -> ActionResult:
+    """Stub — actual reproduction logic is in SimulationEngine."""
+    return ActionResult(success=True, events=[{"type": "reproduce"}])
+
+
 # ---------------------------------------------------------------------------
 # Registry & metadata
 # ---------------------------------------------------------------------------
@@ -240,6 +251,7 @@ REGISTRY: dict[ActionType, ActionHandler] = {
     ActionType.EAT: handle_eat,
     ActionType.GATHER: handle_gather,
     ActionType.REST: handle_rest,
+    ActionType.REPRODUCE: handle_reproduce,
 }
 
 
@@ -252,6 +264,7 @@ def get_action_duration(action_type: ActionType, agent: Agent, world: World = No
         ActionType.EAT: 3,
         ActionType.GATHER: max(2, 5 - agent.speed // 20),
         ActionType.REST: max(3, 20 - int(agent.energy) // 5),
+        ActionType.REPRODUCE: 10,
     }
     return durations[action_type]
 
@@ -263,6 +276,7 @@ ACTION_EMOJIS: dict[ActionType, str] = {
     ActionType.EAT: "🍎",
     ActionType.GATHER: "🫐",
     ActionType.REST: "💤",
+    ActionType.REPRODUCE: "❤️",
 }
 
 
@@ -278,4 +292,5 @@ __all__ = [
     "handle_eat",
     "handle_gather",
     "handle_rest",
+    "handle_reproduce",
 ]

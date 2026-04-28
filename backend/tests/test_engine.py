@@ -95,13 +95,19 @@ class TestAgent:
         assert agent.position == (5.0, 5.0)
         assert agent.hunger == 50.0
         assert agent.fsm_state == "idle"
+        assert agent.age == 0
+        assert agent.max_age == 3000
+        assert agent.sex in ("male", "female")
 
     def test_factory_default_agents(self):
         """Factory creates 3 default agents."""
         agents = AgentFactory.create_default_agents()
         assert len(agents) == 3
         assert agents[0].name == "Zog"
+        assert agents[0].sex == "male"
+        assert agents[0].age == 0
         assert agents[1].name == "Mila"
+        assert agents[1].sex == "female"
         assert agents[2].name == "Kael"
 
     def test_fsm_valid_transitions(self):
@@ -142,7 +148,7 @@ class TestAgent:
 
 class TestActions:
     def test_action_registry_has_all(self):
-        """REGISTRY contains all 6 action types."""
+        """REGISTRY contains all action types."""
         for action_type in ActionType:
             assert action_type in REGISTRY
 
@@ -296,6 +302,21 @@ class TestSnapshotBuilder:
         assert snapshot.metrics.population == 3
         assert snapshot.metrics.avg_hunger > 0
 
+    def test_snapshot_contains_new_fields(self):
+        """Snapshot AgentState includes new lifecycle fields."""
+        world = World(width=10, height=10)
+        agents = AgentFactory.create_default_agents()
+        builder = WorldSnapshotBuilder(world, agents)
+        snapshot = builder.build(tick=1)
+        agent_state = snapshot.agents["agent_001"]
+        assert agent_state.sex in ("male", "female")
+        assert agent_state.age == 0
+        assert agent_state.max_age > 0
+        assert agent_state.strength > 0
+        assert agent_state.sociability > 0
+        assert hasattr(agent_state, "system_prompt")
+        assert hasattr(agent_state, "monologue_history")
+
     def test_delta_removed_agents(self):
         """Delta snapshot tracks removed agents."""
         world = World(width=10, height=10)
@@ -372,3 +393,28 @@ class TestEngine:
         await engine.stop()
         # Agent should have moved from idle to some other state
         assert agent.fsm_state != "idle"
+
+    @pytest.mark.anyio
+    async def test_agent_age_increments(self):
+        """Agent age increases each tick."""
+        world = World(width=10, height=10)
+        agents = AgentFactory.create_default_agents()
+        engine = SimulationEngine(world=world, agents=agents)
+        await engine.start()
+        await asyncio.sleep(0.15)
+        await engine.stop()
+        for agent in agents:
+            assert agent.age > 0
+
+    @pytest.mark.anyio
+    async def test_agent_max_age(self):
+        """Agent with max_age=0 dies immediately."""
+        world = World(width=10, height=10)
+        from app.simulation.agent import Agent
+        old_agent = Agent(id="old_001", name="Oldie", position=(5.0, 5.0), max_age=0, age=0)
+        agents = [old_agent]
+        engine = SimulationEngine(world=world, agents=agents)
+        await engine.start()
+        await asyncio.sleep(0.15)
+        await engine.stop()
+        assert old_agent not in engine.agents  # Should have died

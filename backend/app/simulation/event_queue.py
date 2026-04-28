@@ -131,15 +131,36 @@ def check_resource_discoveries(
     return events
 
 
-def create_death_event(agent: Agent, current_tick: int) -> SimEvent:
+def create_death_event(agent: Agent, current_tick: int, cause: str = "starvation") -> SimEvent:
+    descriptions = {
+        "starvation": f"{agent.name} has died",
+        "old_age": f"{agent.name} died of old age at age {getattr(agent, 'age', '?')}",
+        "thirst": f"{agent.name} died of dehydration",
+        "violence": f"{agent.name} was killed",
+    }
     return SimEvent(
         event_id=f"death_{uuid.uuid4().hex[:8]}",
         type="death",
         severity="critical",
-        description=f"{agent.name} has died",
+        description=descriptions.get(cause, descriptions["starvation"]),
         agent_ids=[agent.id],
         tick=current_tick,
         position=agent.position,
+        metadata={"cause": cause},
+    )
+
+
+def create_birth_event(child: Agent, parent1: Agent, parent2: Agent, current_tick: int) -> SimEvent:
+    """Create a birth event for a new agent."""
+    return SimEvent(
+        event_id=f"birth_{uuid.uuid4().hex[:8]}",
+        type="birth",
+        severity="info",
+        description=f"{child.name} was born to {parent1.name} and {parent2.name}",
+        agent_ids=[parent1.id, parent2.id, child.id],
+        tick=current_tick,
+        position=child.position,
+        metadata={"child_id": child.id, "child_name": child.name},
     )
 
 
@@ -149,4 +170,5 @@ __all__ = [
     "check_proximity_encounters",
     "check_resource_discoveries",
     "create_death_event",
+    "create_birth_event",
 ]

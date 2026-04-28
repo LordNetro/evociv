@@ -46,6 +46,15 @@ class WorldSnapshotBuilder:
             action_progress=round(agent.action_progress, 2),
             inventory=dict(agent.inventory),
             last_thought=agent.last_thought or "",
+            sex=agent.sex,
+            age=agent.age,
+            max_age=agent.max_age,
+            strength=agent.strength,
+            intelligence=agent.intelligence,
+            sociability=agent.sociability,
+            speed=agent.speed,
+            system_prompt=agent.system_prompt[:200] if agent.system_prompt else "",
+            monologue_history=list(agent.monologue_history[-5:]),
         )
 
     def _compute_metrics(self) -> SimulationMetrics:

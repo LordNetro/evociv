@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
+import uuid
 from typing import Optional
 
 from app.core.config import settings
@@ -118,6 +120,14 @@ class SimulationEngine:
     @property
     def latest_snapshot(self) -> Optional[dict]:
         return self._latest_full_snapshot
+
+    def add_agent(self, agent: Agent) -> str:
+        """Add a new agent to the simulation. Returns the agent ID."""
+        self.agents.append(agent)
+        self.fsms[agent.id] = FSM()
+        self.builder.mark_agent_dirty(agent.id)
+        logger.info(f"Agent {agent.name} ({agent.id}) added to simulation")
+        return agent.id
 
     # ------------------------------------------------------------------
     # Tick loop
@@ -245,6 +255,9 @@ class SimulationEngine:
             if agent.thirst >= 100:
                 agent.health -= 1.0
 
+            # Age
+            agent.age += 1
+
             # Clamp to [0, 100]
             agent.hunger = max(0.0, min(100.0, agent.hunger))
             agent.thirst = max(0.0, min(100.0, agent.thirst))
@@ -253,6 +266,12 @@ class SimulationEngine:
 
             if agent.health <= 0:
                 dead_agents.append(agent)
+                continue
+
+            # Death by old age
+            if agent.age >= agent.max_age:
+                dead_agents.append(agent)
+                continue
 
         for agent in dead_agents:
             death_event = create_death_event(agent, tick)
@@ -298,6 +317,56 @@ class SimulationEngine:
     def _fsm_idle(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """IDLE → always evaluate needs."""
         fsm.transition_to("evaluate")
+
+    def _find_reproduction_partner(self, agent: Agent) -> Optional[Agent]:
+        """Find a compatible reproduction partner nearby."""
+        for other in self.agents:
+            if other.id == agent.id:
+                continue
+            if other.sex == agent.sex:
+                continue
+            if other.energy <= 50 or other.hunger >= 50 or other.thirst >= 50:
+                continue
+            if getattr(other, '_is_reproducing', False):
+                continue
+            dist = math.hypot(
+                agent.position[0] - other.position[0],
+                agent.position[1] - other.position[1],
+            )
+            if dist <= INTERACTION_RADIUS:
+                return other
+        return None
+
+    def _create_offspring(self, parent1: Agent, parent2: Agent, tick: int) -> Agent:
+        """Create a new Agent as offspring of two parents."""
+        import random
+        avg_x = (parent1.position[0] + parent2.position[0]) / 2 + random.uniform(-1, 1)
+        avg_y = (parent1.position[1] + parent2.position[1]) / 2 + random.uniform(-1, 1)
+
+        def inherit(a1_val, a2_val):
+            return max(0, min(100, (a1_val + a2_val) // 2 + random.randint(-10, 10)))
+
+        child = Agent(
+            id=f"agent_{uuid.uuid4().hex[:6]}",
+            name=self._generate_agent_name(),
+            position=(avg_x, avg_y),
+            role=random.choice([parent1.role, parent2.role]),
+            strength=inherit(parent1.strength, parent2.strength),
+            intelligence=inherit(parent1.intelligence, parent2.intelligence),
+            sociability=inherit(parent1.sociability, parent2.sociability),
+            speed=inherit(parent1.speed, parent2.speed),
+            sex=random.choice(["male", "female"]),
+            age=0,
+            max_age=random.randint(2000, 5000),
+        )
+        return child
+
+    def _generate_agent_name(self) -> str:
+        """Generate a random agent name."""
+        import random
+        names = ["Rax", "Nyx", "Vex", "Lux", "Tix", "Bix", "Zan", "Riv", "Fen", "Gor",
+                 "Lia", "Nia", "Tia", "Mya", "Rya", "Ena", "Ula", "Ora", "Ada", "Iva"]
+        return random.choice(names)
 
     def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Check needs and decide next state."""
@@ -362,6 +431,26 @@ class SimulationEngine:
                 )
                 agent.move_progress = 0.0
                 fsm.transition_to("moving")
+                return
+
+        # -- Reproduction opportunity --
+        if (agent.sociability > 60 and agent.energy > 50 and
+            agent.hunger < 50 and agent.thirst < 50):
+            partner = self._find_reproduction_partner(agent)
+            if partner:
+                agent._is_reproducing = True
+                partner._is_reproducing = True
+                agent.current_action = "reproduce"
+                agent.current_action_emoji = "❤️"
+                agent.action_duration = get_action_duration(ActionType.REPRODUCE, agent)
+                agent.action_progress = 0.0
+                partner.current_action = "reproducing"
+                partner.current_action_emoji = "❤️"
+                partner.action_duration = get_action_duration(ActionType.REPRODUCE, partner)
+                partner.action_progress = 0.0
+                agent._reproduce_partner_id = partner.id
+                partner._reproduce_partner_id = agent.id
+                fsm.transition_to("executing")
                 return
 
         # Needs met → try LLM for higher-level planning
@@ -471,6 +560,25 @@ class SimulationEngine:
                 if result.interrupted or not result.success:
                     fsm.transition_to("evaluate")
                     return
+
+            # Handle special actions (not in registry)
+            if action_type == ActionType.REPRODUCE:
+                partner_id = getattr(agent, '_reproduce_partner_id', None)
+                partner = next((a for a in self.agents if a.id == partner_id), None)
+                if partner:
+                    child = self._create_offspring(agent, partner, tick)
+                    self.add_agent(child)
+                    from app.simulation.event_queue import create_birth_event
+                    birth_ev = create_birth_event(child, agent, partner, tick)
+                    self.event_queue.push(
+                        birth_ev.type, birth_ev.description, birth_ev.severity,
+                        birth_ev.agent_ids, tick, birth_ev.position, birth_ev.metadata,
+                    )
+                # Clean up
+                for a in [agent, partner]:
+                    if a:
+                        a._is_reproducing = False
+                        a._reproduce_partner_id = None
 
             # Advance plan
             agent.action_progress = 0.0

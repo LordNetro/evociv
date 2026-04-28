@@ -29,6 +29,11 @@ class Agent:
     sociability: int = 50
     speed: int = 50
 
+    # Age & reproduction
+    age: int = 0
+    max_age: int = 3000  # default, overridden in factory
+    sex: str = "male"  # "male" or "female"
+
     # Role
     role: str = "gatherer"
 
@@ -103,6 +108,9 @@ class AgentFactory:
             intelligence=attrs.get("intelligence", 50),
             sociability=attrs.get("sociability", 50),
             speed=attrs.get("speed", 50),
+            sex=attrs.get("sex", "male"),
+            age=attrs.get("age", 0),
+            max_age=attrs.get("max_age", 3000),
         )
 
     @staticmethod
@@ -118,6 +126,9 @@ class AgentFactory:
                 intelligence=40,
                 sociability=50,
                 speed=55,
+                sex="male",
+                age=0,
+                max_age=3500,
             ),
             Agent(
                 id="agent_002",
@@ -128,6 +139,9 @@ class AgentFactory:
                 intelligence=55,
                 sociability=40,
                 speed=35,
+                sex="female",
+                age=0,
+                max_age=4000,
             ),
             Agent(
                 id="agent_003",
@@ -138,6 +152,9 @@ class AgentFactory:
                 intelligence=60,
                 sociability=65,
                 speed=80,
+                sex="male",
+                age=0,
+                max_age=3000,
             ),
         ]
 

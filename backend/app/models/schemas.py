@@ -18,6 +18,15 @@ class AgentState(BaseModel):
     action_progress: float = 0.0
     inventory: dict[str, int] = {}
     last_thought: str = ""
+    sex: str = "male"
+    age: int = 0
+    max_age: int = 3000
+    strength: int = 50
+    intelligence: int = 50
+    sociability: int = 50
+    speed: int = 50
+    system_prompt: str = ""
+    monologue_history: list[str] = []
 
 
 # --- Simulation Metrics ---

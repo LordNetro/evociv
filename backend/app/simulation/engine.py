@@ -301,14 +301,25 @@ class SimulationEngine:
 
     def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Check needs and decide next state."""
-        # Critical needs → handle with FSM instinct
+        # ── Critical needs → handle with FSM instinct ──
         if agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
             nearby = self.world.get_nearby_resources(agent.position, radius=8)
             food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
             water_nearby = [r for r in nearby if r[2] == "water"]
 
-            # If already at resource, execute action directly
-            if agent.thirst > agent.hunger:
+            # PRIORITY 1: Eat food from inventory if hungry
+            if agent.hunger > CRITICAL_HUNGER:
+                berries = agent.inventory.get("berries", 0)
+                if berries > 0:
+                    agent.current_action = "eat"
+                    agent.current_action_emoji = "🍎"
+                    agent.action_duration = 3
+                    agent.action_progress = 0.0
+                    fsm.transition_to("executing")
+                    return
+
+            # PRIORITY 2: Drink if thirsty and at water
+            if agent.thirst > CRITICAL_THIRST:
                 for r in water_nearby:
                     if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
                         agent.current_action = "drink"
@@ -317,7 +328,9 @@ class SimulationEngine:
                         agent.action_progress = 0.0
                         fsm.transition_to("executing")
                         return
-            else:
+
+            # PRIORITY 3: Gather food if hungry and at food source
+            if agent.hunger > CRITICAL_HUNGER:
                 for r in food_nearby:
                     if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
                         agent.current_action = "gather"
@@ -327,6 +340,7 @@ class SimulationEngine:
                         fsm.transition_to("executing")
                         return
 
+            # PRIORITY 4: Move toward resource
             if agent.thirst > agent.hunger and water_nearby:
                 target = (water_nearby[0][0], water_nearby[0][1])
                 agent.current_action = "seeking water"
@@ -338,7 +352,7 @@ class SimulationEngine:
                 agent.move_progress = 0.0
                 fsm.transition_to("moving")
                 return
-            elif food_nearby:
+            elif food_nearby and agent.inventory.get("berries", 0) == 0:
                 target = (food_nearby[0][0], food_nearby[0][1])
                 agent.current_action = "seeking food"
                 agent.current_action_emoji = "🍎"
@@ -536,8 +550,15 @@ class SimulationEngine:
             agent.current_action_emoji = "⏳"
             self.builder.mark_agent_dirty(agent.id)
 
-            # Instinct: if critically hungry/thirsty, move toward nearest resource
-            if agent.hunger > 80 or agent.thirst > 80:
+            # Instinct: if hungry, eat from inventory first
+            if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
+                agent.current_action = "eat"
+                agent.current_action_emoji = "🍎"
+                agent.action_duration = 3
+                agent.action_progress = 0.0
+                fsm.transition_to("executing")
+            # Otherwise move toward nearest resource
+            elif agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
                 nearby = self.world.get_nearby_resources(agent.position, radius=5)
                 target = None
                 for r in nearby:

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { simulationStore } from '$lib/stores/simulationStore.svelte.js';
 	import { uiStore } from '$lib/stores/uiStore.svelte.js';
+	import HudWidgets from './HudWidgets.svelte';
 </script>
 
 <div class="hud">
@@ -9,6 +10,7 @@
 	</div>
 	<div class="stat">Tick: {$simulationStore.tick}</div>
 	<div class="stat">Population: {$simulationStore.metrics.population}</div>
+	<HudWidgets />
 	<button class="btn" onclick={() => uiStore.setPaused(!$uiStore.paused)}>
 		{$uiStore.paused ? 'Resume' : 'Pause'}
 	</button>

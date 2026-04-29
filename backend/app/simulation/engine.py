@@ -28,6 +28,7 @@ from app.simulation.world import World
 from app.simulation.conversation import ConversationManager
 from app.simulation.faction import FactionManager
 from app.simulation.colony import ColonyStatsCollector
+from app.simulation.conversation import Message
 
 logger = logging.getLogger("evociv.engine")
 logger.setLevel(logging.INFO)
@@ -299,6 +300,59 @@ class SimulationEngine:
     # ------------------------------------------------------------------
     # Needs & death
     # ------------------------------------------------------------------
+
+    def _process_say_to(self, agent: Agent, response_data: dict, tick: int) -> None:
+        """Process say_to / think_aloud from LLM response and emit dialogue events."""
+        say_to = response_data.get("say_to")
+        think_aloud = response_data.get("think_aloud")
+
+        if say_to and say_to.get("agent_id") and say_to.get("text"):
+            agent.current_dialogue = say_to["text"]
+            agent.dialogue_type = "speech"
+            target = next((a for a in self.agents if a.id == say_to["agent_id"]), None)
+            if target:
+                target.conversation_queue.append(
+                    Message(
+                        sender_id=agent.id,
+                        content={"type": "dialogue", "text": say_to["text"]},
+                        tick=tick,
+                    )
+                )
+                self._update_relationship(agent, target, tick, score_delta=0.05)
+                self.event_queue.push(
+                    "dialogue",
+                    f"{agent.name} → {target.name}: {say_to['text']}",
+                    "info",
+                    [agent.id, target.id],
+                    tick,
+                    agent.position,
+                )
+            else:
+                logger.warning(f"say_to target {say_to['agent_id']} not found for {agent.name}")
+                self.event_queue.push(
+                    "dialogue",
+                    f"{agent.name} → ??? : {say_to['text']}",
+                    "info",
+                    [agent.id],
+                    tick,
+                    agent.position,
+                )
+        elif think_aloud and str(think_aloud).strip():
+            agent.current_dialogue = str(think_aloud)
+            agent.dialogue_type = "thought"
+            self.event_queue.push(
+                "dialogue",
+                f"{agent.name} thinks: {think_aloud}",
+                "info",
+                [agent.id],
+                tick,
+                agent.position,
+            )
+        else:
+            agent.current_dialogue = None
+            agent.dialogue_type = None
+
+        self.builder.mark_agent_dirty(agent.id)
 
     def _update_relationship(
         self, agent_a: Agent, agent_b: Agent, tick: int, score_delta: float = 0.1
@@ -1029,6 +1083,7 @@ class SimulationEngine:
                     agent.monologue_history.append(agent.last_thought)
                     if len(agent.monologue_history) > 10:
                         agent.monologue_history.pop(0)
+                    self._process_say_to(agent, plan, tick)
                     logger.debug(
                         f"{agent.name} received new plan: "
                         f"{plan.get('intention', '')}"
@@ -1105,6 +1160,7 @@ class SimulationEngine:
                 agent.monologue_history.append(agent.last_thought)
                 if len(agent.monologue_history) > 10:
                     agent.monologue_history.pop(0)
+                self._process_say_to(agent, plan, tick)
                 agent.llm_call_pending = False
                 agent.llm_future = None
                 self.builder.mark_agent_dirty(agent.id)

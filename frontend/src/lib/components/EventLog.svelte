@@ -9,13 +9,15 @@
 		tick: number;
 	}
 
-	let filter = $state<'all' | 'info' | 'warning' | 'critical'>('all');
+	let filter = $state<'all' | 'info' | 'warning' | 'critical' | 'social'>('all');
 	let logEl: HTMLDivElement;
 
 	let events = $derived<EventData[]>(
 		filter === 'all'
 			? ($simulationStore.events as EventData[])
-			: ($simulationStore.events as EventData[]).filter((e) => e.severity === filter)
+			: filter === 'social'
+				? ($simulationStore.events as EventData[]).filter((e) => e.type === 'dialogue')
+				: ($simulationStore.events as EventData[]).filter((e) => e.severity === filter)
 	);
 
 	$effect(() => {
@@ -36,18 +38,25 @@
 			<option value="info">Info</option>
 			<option value="warning">Warning</option>
 			<option value="critical">Critical</option>
+			<option value="social">Social</option>
 		</select>
 	</div>
 	<div class="log" bind:this={logEl}>
 		{#each events as event, i (i)}
-			<div
-				class="event"
-				class:critical={event.severity === 'critical'}
-				class:warning={event.severity === 'warning'}
-			>
-				<span class="type">[{event.type ?? 'event'}]</span>
-				<span class="desc">{event.description ?? ''}</span>
-			</div>
+			{#if filter === 'social' && event.type === 'dialogue'}
+				<div class="event chat-event">
+					<span class="chat-line">{event.description ?? ''}</span>
+				</div>
+			{:else}
+				<div
+					class="event"
+					class:critical={event.severity === 'critical'}
+					class:warning={event.severity === 'warning'}
+				>
+					<span class="type">[{event.type ?? 'event'}]</span>
+					<span class="desc">{event.description ?? ''}</span>
+				</div>
+			{/if}
 		{/each}
 	</div>
 </div>
@@ -108,6 +117,15 @@
 
 	.desc {
 		color: #ddd;
+	}
+
+	.chat-event {
+		padding: 2px 0;
+	}
+
+	.chat-line {
+		color: #b0e0ff;
+		font-style: italic;
 	}
 
 	select {

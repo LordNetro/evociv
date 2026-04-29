@@ -194,6 +194,7 @@ class RealLLMOrchestrator:
                     "steps": plan.get("steps", []),
                     "abort_if": plan.get("abort_if", {}),
                     "think_aloud": plan.get("think_aloud", ""),
+                    "say_to": plan.get("say_to", None),
                 },
             }
         except json.JSONDecodeError as e:

@@ -85,6 +85,10 @@ class Agent:
     maturity_age: int = 500
     faction_id: Optional[str] = None
 
+    # Dialogue bubbles
+    current_dialogue: str | None = None
+    dialogue_type: str | None = None  # "speech" | "thought"
+
 
 class FSM:
     """Simple state machine for agent behaviour."""
@@ -247,6 +251,7 @@ class MockLLMOrchestrator:
                             "think_aloud": (
                                 "I should explore the area and gather what I can."
                             ),
+                            "say_to": {"agent_id": "agent_002", "text": "Hello Mila!"},
                         },
                     }
                 )

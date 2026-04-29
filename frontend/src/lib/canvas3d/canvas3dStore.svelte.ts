@@ -1,13 +1,23 @@
 export type AgentPosition = { x: number; y: number };
 
+export type DialogueBubble = {
+	text: string;
+	type: 'speech' | 'thought';
+	visibleUntil: number;
+};
+
 interface Snapshot {
-	agents?: Record<string, { position?: [number, number] }>;
+	agents?: Record<
+		string,
+		{ position?: [number, number]; current_dialogue?: string; dialogue_type?: string }
+	>;
 }
 
 class Canvas3DStore {
 	agentPositions = $state<Record<string, AgentPosition>>({});
 	targetPositions = $state<Record<string, AgentPosition>>({});
 	lerpFactor = $state(0);
+	dialogueBubbles = $state<Record<string, DialogueBubble | null>>({});
 
 	/**
 	 * Called from $effect when snapshot changes.
@@ -18,14 +28,28 @@ class Canvas3DStore {
 		if (!snapshot?.agents) return;
 
 		const newTargets: Record<string, AgentPosition> = {};
+		const newBubbles: Record<string, DialogueBubble | null> = {};
+
 		for (const [id, agent] of Object.entries(snapshot.agents)) {
 			const pos = agent.position as [number, number] | undefined;
 			if (pos) {
 				newTargets[id] = { x: pos[0], y: pos[1] };
 			}
+
+			if (agent.current_dialogue) {
+				const duration = agent.dialogue_type === 'thought' ? 5000 : 3000;
+				newBubbles[id] = {
+					text: agent.current_dialogue,
+					type: agent.dialogue_type === 'thought' ? 'thought' : 'speech',
+					visibleUntil: Date.now() + duration
+				};
+			} else {
+				newBubbles[id] = null;
+			}
 		}
 
 		this.targetPositions = newTargets;
+		this.dialogueBubbles = newBubbles;
 		this.lerpFactor = 0;
 	}
 
@@ -52,6 +76,14 @@ class Canvas3DStore {
 		}
 		// Dead agents are naturally removed — we only iterate targetPositions
 		this.agentPositions = nextPositions;
+
+		// Expire old dialogue bubbles
+		const now = Date.now();
+		for (const [id, bubble] of Object.entries(this.dialogueBubbles)) {
+			if (bubble && now > bubble.visibleUntil) {
+				this.dialogueBubbles[id] = null;
+			}
+		}
 	}
 }
 

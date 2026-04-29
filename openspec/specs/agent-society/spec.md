@@ -80,8 +80,13 @@ Extends the core simulation with a full social simulation layer: relationships, 
 | F6-R4 | On each tick, an agent in IDLE state with non-empty `conversation_queue` MUST process the next message in its LLM prompt. The LLM decides how to respond (reply, share knowledge, ignore, propose trade, etc.). | MUST |
 | F6-R5 | Agents MAY share knowledge from their `knowledge` store (F2) through conversation. When an agent shares a known property, the receiving agent's `knowledge` store MUST be updated. | MUST |
 | F6-R6 | Each successful conversation interaction MUST increment the `interaction_count` for both participants, feeding into F8's relationship system. | MUST |
-| F6-R7 | All conversation events (initiation, messages, knowledge shared) MUST be recorded as SimEvents in the event log with type `"socialize"`. | MUST |
+| F6-R7 | All conversation events MUST be recorded as SimEvents. `"socialize"` events cover proximity encounters (unchanged). `"dialogue"` events cover LLM-produced speech and thoughts (new). | MUST |
 | F6-R8 | To prevent tick-loop spam, a maximum of 5 conversation pairs per tick MUST be processed. Additional pending pairs are deferred to the next tick. | MUST |
+| F6-R9 | The LLM JSON response format MUST support an optional `say_to` field with structure `{"agent_id": str, "text": str}`. The engine MUST extract this field when polling completed LLM futures: it MUST set `current_dialogue` and `dialogue_type` on the source agent, and enqueue a `Message` with `content={"type": "dialogue", "text": "..."}` in the destination agent's `conversation_queue`. | MUST |
+| F6-R10 | When the engine processes an LLM response that includes `think_aloud`, it MUST set `agent.current_dialogue` to the `think_aloud` text and `agent.dialogue_type` to `"thought"`, in addition to populating the existing `last_thought` field. | MUST |
+| F6-R11 | The engine MUST emit a `SimEvent` with `type="dialogue"` when processing an LLM response that produces a `say_to` or `think_aloud` with non-null text. The existing `"socialize"` event type for proximity encounters is unchanged. | MUST |
+| F6-R12 | The `Agent` dataclass MUST gain `current_dialogue: str | None` and `dialogue_type: Literal["speech", "thought"] | None`, both defaulting to `None`. The `AgentState` Pydantic model MUST mirror these fields. The snapshot builder MUST map `Agent` dialogue fields to the `AgentState` for every snapshot tick. | MUST |
+| F6-R13 | The `JSON_FORMAT_INSTRUCTION` in the LLM prompt MUST include the `say_to` field in the JSON schema alongside the existing `think_aloud`. | MUST |
 
 **F7 — Colony Information Panel**
 
@@ -151,6 +156,14 @@ Extends the core simulation with a full social simulation layer: relationships, 
 - GIVEN Agent A shares knowledge about `POISONOUS_BERRY` via a conversation message WHEN Agent B processes the message THEN Agent B's `knowledge` store is updated with the shared information
 - GIVEN a conversation event WHEN it occurs THEN a SimEvent with type `"socialize"` is logged containing both agent IDs and message summary
 - GIVEN more than 5 conversation pairs are pending in a single tick WHEN the tick processes social interactions THEN only 5 pairs are processed and the remainder are deferred to the next tick
+- GIVEN an LLM response for agent "Zog" with `"say_to": {"agent_id": "agent_002", "text": "Hello Mila!"}` WHEN the engine polls completed LLM futures THEN a `Message` with `content={"type": "dialogue", "text": "Hello Mila!"}` is enqueued in the destination agent's queue AND the source agent's `current_dialogue` is set to "Hello Mila!" with `dialogue_type="speech"`
+- GIVEN an LLM response without a `say_to` field WHEN the engine processes the response THEN no dialogue message is enqueued AND the source agent's `current_dialogue` SHOULD be cleared to `None`
+- GIVEN an LLM response with `"think_aloud": "I should find water"` WHEN the engine processes the response THEN `agent.current_dialogue` is "I should find water" AND `agent.dialogue_type` is `"thought"` AND `agent.last_thought` is also set
+- GIVEN an LLM response with valid `say_to` WHEN the engine processes it THEN a `SimEvent` with `type="dialogue"` and description `"{sender} → {receiver}: {text}"` is emitted
+- GIVEN an LLM response with `think_aloud="I am tired"` WHEN the engine processes it THEN a `SimEvent` with `type="dialogue"` and description `"{name} thinks: I am tired"` is emitted
+- GIVEN a newly created Agent WHEN inspected THEN `current_dialogue` is `None` and `dialogue_type` is `None`
+- GIVEN an agent with `current_dialogue="Hello"` and `dialogue_type="speech"` WHEN a `WorldSnapshot` is built THEN the agent's `AgentState` in `snapshot.agents[agent_id]` includes `current_dialogue="Hello"` and `dialogue_type="speech"`
+- GIVEN the `JSON_FORMAT_INSTRUCTION` template WHEN the prompt is rendered THEN the JSON format includes `"say_to": {"agent_id": "target_id", "text": "what to say"}` as an optional field
 
 **F7 — Colony Information Panel**
 

@@ -9,7 +9,7 @@ const DEFAULT_CONFIG = {
 	gridHeight: 50,
 	tileSize: 32,
 	tickRate: 0.1,
-	wsUrl: 'ws://localhost:8765/ws'
+	wsUrl: 'ws://127.0.0.1:8765/ws'
 };
 
 function createConfigStore() {

@@ -66,7 +66,8 @@ Respond with ONLY this JSON format:
     "hunger < 15": "what to do if starving",
     "thirst < 15": "what to do if dehydrated"
   },
-  "think_aloud": "Your internal monologue as narration"
+  "think_aloud": "Your internal monologue as narration",
+  "say_to": {"agent_id": "target_agent_id", "text": "What you want to say to another agent"} | null
 }
 
 IMPORTANT: "move" to get to resources, then use the appropriate action.

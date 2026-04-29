@@ -32,6 +32,8 @@ class AgentState(BaseModel):
     is_child: bool = False
     parent_id: str | None = None
     faction_id: str | None = None
+    current_dialogue: str | None = None
+    dialogue_type: str | None = None
 
 
 # --- Simulation Metrics ---

@@ -67,6 +67,8 @@ class WorldSnapshotBuilder:
             is_child=agent.is_child,
             parent_id=agent.parent_id,
             faction_id=agent.faction_id,
+            current_dialogue=agent.current_dialogue,
+            dialogue_type=agent.dialogue_type,
         )
 
     def _compute_metrics(self) -> SimulationMetrics:

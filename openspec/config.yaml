@@ -1,11 +1,11 @@
 schema: spec-driven
 
 context: |
-  Tech stack: Python/FastAPI backend (async, SQLAlchemy + aiosqlite, LiteLLM, WebSocket) + SvelteKit frontend (TypeScript, Svelte 5, Vite, Chart.js, Canvas API)
-  Architecture: Monorepo (npm workspaces) with two-service architecture — FastAPI backend (app/) with simulation engine + AI orchestration, SvelteKit frontend (frontend/) with reactive stores + Canvas 2D rendering
+  Tech stack: Python/FastAPI backend (async, SQLAlchemy + aiosqlite, LiteLLM, WebSocket) + SvelteKit frontend (Svelte 5 runes, TypeScript 6, Vite 8, Threlte 8 + Three.js 3D, Chart.js)
+  Architecture: Monorepo (npm workspaces) with two-service architecture — FastAPI backend (app/) with simulation engine + AI orchestration, SvelteKit frontend (frontend/) with reactive stores + Threlte 8 / Three.js 3D canvas
   Communication: WebSocket (delta snapshots in real time)
   Persistence: SQLite (events/metrics) + JSON configs (world/agents/rules) + ChromaDB (agent memory via LiteLLM)
-  Testing: pytest + pytest-asyncio (backend, 49 tests passing), svelte-check (frontend type check)
+  Testing: pytest + pytest-asyncio + httpx ASGITransport (backend, 114 tests), svelte-check (frontend type check). NO frontend test framework.
   Style: ruff (Python linting + formatting), ESLint + Prettier (JS/TS/Svelte)
 
 strict_tdd: true
@@ -13,11 +13,11 @@ strict_tdd: true
 testing:
   runner:
     command: python -m pytest tests/ -v
-    framework: pytest
+    framework: pytest (v8+)
   layers:
     unit:
       available: true
-      tool: pytest
+      tool: pytest + pytest-asyncio
     integration:
       available: true
       tool: httpx (ASGITransport)
@@ -27,16 +27,17 @@ testing:
   coverage:
     available: false
     command: null
+  frontend_test_framework: NOT INSTALLED
   quality:
     linter:
       available: true
-      command: ruff check .
+      command: ruff check . (backend) / prettier --check . && eslint . (frontend)
     type_checker:
       available: true
       command: svelte-check (frontend) / N/A (backend)
     formatter:
       available: true
-      command: ruff format (backend) / prettier (frontend)
+      command: ruff format (backend) / prettier --write . (frontend)
 
 rules:
   proposal:

@@ -30,11 +30,13 @@ class RealLLMOrchestrator:
         base_url: str = "http://localhost:11434",
         timeout: int = 30,
         memory: Optional[AgentMemory] = None,
+        faction_manager=None,
     ):
         self.model = model
         self.api_url = f"{base_url.rstrip('/')}/api/chat"
         self.timeout = timeout
         self.memory = memory or AgentMemory()
+        self.faction_manager = faction_manager
         self._pending: dict[str, asyncio.Future] = {}
         self._mock = MockLLMOrchestrator()
 
@@ -62,12 +64,22 @@ class RealLLMOrchestrator:
                 )
         memories = self.memory.format_recent(agent.id, n=5)
         trigger = agent.last_thought or "Time to decide what to do"
+        # Resolve faction context if available
+        faction_context = ""
+        if agent.faction_id:
+            faction = self.faction_manager.get_faction(agent.faction_id) if hasattr(self, "faction_manager") else None
+            if faction:
+                faction_context = f'- You are a member of "{faction.name}" (color: {faction.color})'
+            else:
+                faction_context = f'- You are a member of faction "{agent.faction_id}"'
         return build_agent_prompt(
             agent=agent,
             nearby_resources=nearby_resources,
             nearby_agents="none",
             memories=memories,
             trigger=trigger,
+            last_action_result=agent.last_action_result,
+            faction_context=faction_context,
         )
 
     async def check_availability(self) -> bool:

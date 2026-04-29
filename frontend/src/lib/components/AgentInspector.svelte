@@ -25,7 +25,21 @@
 		last_thought?: string;
 		system_prompt?: string;
 		monologue_history?: string[];
+		relationships?: Record<string, { interaction_count: number; last_interaction_tick: number; score: number }>;
+		faction_id?: string;
+		knowledge?: Record<string, Record<string, unknown>>;
+		is_child?: boolean;
+		parent_id?: string;
+		maturity_age?: number;
 		[key: string]: unknown;
+	}
+
+	interface FactionData {
+		id: string;
+		name: string;
+		color: string;
+		member_count: number;
+		shared_resources: Record<string, number>;
 	}
 
 	let agent = $derived<AgentData | null>(
@@ -33,6 +47,7 @@
 			? (($simulationStore.agents as Record<string, AgentData>)[$uiStore.selectedAgentId] ?? null)
 			: null
 	);
+	let factions = $derived(($simulationStore.factions ?? {}) as Record<string, FactionData>);
 
 	const ITEM_EMOJIS: Record<string, string> = {
 		berries: '🫐',
@@ -161,6 +176,83 @@
 					</ul>
 				{:else}
 					<p class="empty">(no thoughts)</p>
+				{/if}
+			</div>
+		</details>
+
+		<details class="section">
+			<summary>Relationships</summary>
+			<div class="section-body">
+				{#if agent.relationships && Object.keys(agent.relationships).length > 0}
+					{#each Object.entries(agent.relationships) as [otherId, rel] (otherId)}
+						{@const other = ($simulationStore.agents as Record<string, AgentData>)?.[otherId]}
+						<div class="kv-row">
+							<span class="kv-key">{other?.name ?? otherId}</span>
+							<span class="kv-value">count:{rel.interaction_count} score:{rel.score.toFixed(2)}</span>
+						</div>
+					{/each}
+				{:else}
+					<p class="empty">(no relationships yet)</p>
+				{/if}
+			</div>
+		</details>
+
+		<details class="section">
+			<summary>Faction</summary>
+			<div class="section-body">
+				{#if agent.faction_id}
+					{@const faction = factions[agent.faction_id]}
+					<div class="kv-row">
+						<span class="kv-key">Name</span>
+						<span class="kv-value" style="display:flex;align-items:center;gap:6px;">
+							{#if faction}
+								<span style="width:12px;height:12px;border-radius:50%;background:{faction.color};display:inline-block;"></span>
+								{faction.name}
+							{:else}
+								{agent.faction_id}
+							{/if}
+						</span>
+					</div>
+				{:else}
+					<p class="empty">(not in a faction)</p>
+				{/if}
+			</div>
+		</details>
+
+		<details class="section">
+			<summary>Knowledge</summary>
+			<div class="section-body">
+				{#if agent.knowledge && Object.keys(agent.knowledge).length > 0}
+					{#each Object.entries(agent.knowledge) as [k, v] (k)}
+						<div class="kv-row">
+							<span class="kv-key">{k}</span>
+							<span class="kv-value">{JSON.stringify(v)}</span>
+						</div>
+					{/each}
+				{:else}
+					<p class="empty">(no special knowledge)</p>
+				{/if}
+			</div>
+		</details>
+
+		<details class="section">
+			<summary>Child Status</summary>
+			<div class="section-body">
+				{#if agent.is_child}
+					<div class="kv-row">
+						<span class="kv-key">Status</span>
+						<span class="kv-value">Child</span>
+					</div>
+					<div class="kv-row">
+						<span class="kv-key">Parent</span>
+						<span class="kv-value">{agent.parent_id ?? '—'}</span>
+					</div>
+					<div class="kv-row">
+						<span class="kv-key">Maturity</span>
+						<span class="kv-value">{agent.age ?? 0} / {agent.maturity_age ?? 0}</span>
+					</div>
+				{:else}
+					<p class="empty">Adult</p>
 				{/if}
 			</div>
 		</details>

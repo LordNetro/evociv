@@ -14,6 +14,10 @@ export interface AgentRenderData {
 	thirst: number;
 	/** Name for display */
 	name: string;
+	/** Faction color for border rendering */
+	factionColor: string | null;
+	/** Whether the agent is a child */
+	is_child: boolean;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -56,9 +60,19 @@ export class Entities {
 			this.ctx.fillStyle = 'rgba(0,0,0,0.25)';
 			this.ctx.fill();
 
-			// Body circle
+			// Faction border
+			if (a.factionColor) {
+				this.ctx.beginPath();
+				this.ctx.arc(px, py, RADIUS + 3, 0, Math.PI * 2);
+				this.ctx.strokeStyle = a.factionColor;
+				this.ctx.lineWidth = 3;
+				this.ctx.stroke();
+			}
+
+			// Body circle (children are smaller)
+			const radius = a.is_child ? RADIUS * 0.6 : RADIUS;
 			this.ctx.beginPath();
-			this.ctx.arc(px, py, RADIUS, 0, Math.PI * 2);
+			this.ctx.arc(px, py, radius, 0, Math.PI * 2);
 			this.ctx.fillStyle = color;
 			this.ctx.fill();
 			this.ctx.strokeStyle = 'rgba(0,0,0,0.4)';
@@ -93,6 +107,14 @@ export class Entities {
 	updateFromSnapshot(data: any): void {
 		if (!data?.agents) return;
 
+		// Build factions lookup
+		const factions: Record<string, { color: string }> = {};
+		if (data.factions && Array.isArray(data.factions)) {
+			for (const f of data.factions) {
+				if (f.id) factions[f.id] = f;
+			}
+		}
+
 		// Remove dead agents (explicitly from removed_agents list)
 		if (data.removed_agents) {
 			for (const id of data.removed_agents) {
@@ -123,7 +145,9 @@ export class Entities {
 					emoji: '',
 					hunger: 0,
 					thirst: 0,
-					name: state.name ?? id
+					name: state.name ?? id,
+					factionColor: null,
+					is_child: false
 				};
 				this.agents.set(id, a);
 			}
@@ -134,6 +158,8 @@ export class Entities {
 			a.hunger = state.hunger ?? a.hunger;
 			a.thirst = state.thirst ?? a.thirst;
 			a.name = state.name ?? a.name;
+			a.factionColor = state.faction_id ? (factions[state.faction_id]?.color ?? null) : null;
+			a.is_child = state.is_child ?? false;
 		}
 	}
 

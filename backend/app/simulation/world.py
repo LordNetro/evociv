@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
@@ -23,6 +23,8 @@ class Tile:
     max_amount: int = 0
     regen_rate: float = 0.0
     blocked: bool = False
+    subtype: Optional[str] = None
+    hidden_properties: dict = field(default_factory=dict)
 
 
 class World:
@@ -126,6 +128,15 @@ class World:
         while placed < count and available:
             x, y = available.pop()
             amount = rng.randint(*amount_range)
+            subtype = None
+            hidden_properties = {}
+            if resource_type == ResourceType.BERRIES:
+                if rng.random() < 0.3:
+                    subtype = "POISONOUS_BERRY"
+                    hidden_properties = {"is_poisonous": True}
+                else:
+                    subtype = "SAFE_BERRY"
+                    hidden_properties = {"is_poisonous": False}
             tile = Tile(
                 x=x,
                 y=y,
@@ -133,6 +144,8 @@ class World:
                 amount=amount,
                 max_amount=amount,
                 regen_rate=regen_rate,
+                subtype=subtype,
+                hidden_properties=hidden_properties,
             )
             self.grid[y][x] = tile
             self.dirty_tiles.add((x, y))

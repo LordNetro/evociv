@@ -5,6 +5,7 @@
 	import MetricChart from '$lib/components/MetricChart.svelte';
 	import AgentInspector from '$lib/components/AgentInspector.svelte';
 	import EventLog from '$lib/components/EventLog.svelte';
+	import ColonyInfo from '$lib/components/ColonyInfo.svelte';
 	import { connect, disconnect } from '$lib/components/ws.js';
 
 	onMount(() => {
@@ -19,6 +20,7 @@
 	<MetricChart />
 	<AgentInspector />
 	<EventLog />
+	<ColonyInfo />
 </div>
 
 <style>

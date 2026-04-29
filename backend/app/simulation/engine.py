@@ -10,7 +10,7 @@ import uuid
 from typing import Optional
 
 from app.core.config import settings
-from app.simulation.agent import Agent, FSM
+from app.simulation.agent import Agent, FSM, RelationshipData
 from app.simulation.actions import (
     ActionType,
     REGISTRY,
@@ -25,6 +25,9 @@ from app.simulation.event_queue import (
 )
 from app.simulation.snapshot import WorldSnapshotBuilder
 from app.simulation.world import World
+from app.simulation.conversation import ConversationManager
+from app.simulation.faction import FactionManager
+from app.simulation.colony import ColonyStatsCollector
 
 logger = logging.getLogger("evociv.engine")
 logger.setLevel(logging.INFO)
@@ -39,6 +42,8 @@ CRITICAL_LLM_TRIGGER = 85  # only LLM trigger on critical (for higher-level plan
 INTERACTION_RADIUS = 3.0  # tiles
 REPRODUCTION_COOLDOWN = 500  # ticks between reproductions
 MAX_POPULATION = 20
+INTERACTION_THRESHOLD = 5
+DECAY_INTERVAL = 100
 
 
 class SimulationEngine:
@@ -64,6 +69,9 @@ class SimulationEngine:
         # Subsystems
         self.fsms = {agent.id: FSM() for agent in agents}  # One FSM per agent
         self.event_queue = EventQueue()
+        self.conversation_manager = ConversationManager()
+        self.faction_manager = FactionManager()
+        self.colony_stats_collector = ColonyStatsCollector()
 
         # LLM orchestrator: use injected one, or create mock as fallback
         if llm_orchestrator is not None:
@@ -125,9 +133,22 @@ class SimulationEngine:
 
     def add_agent(self, agent: Agent) -> str:
         """Add a new agent to the simulation. Returns the agent ID."""
+        # Assign to a faction if not already assigned (before append so index is correct)
+        if not agent.faction_id:
+            factions = self.faction_manager.list_all()
+            if factions:
+                # Distribute round-robin
+                idx = len(self.agents) % len(factions)
+                faction = factions[idx]
+                agent.faction_id = faction.id
+                self.faction_manager.join(agent.id, faction.id)
         self.agents.append(agent)
         self.fsms[agent.id] = FSM()
         self.builder.mark_agent_dirty(agent.id)
+        # Inject faction_manager into LLM orchestrator if needed
+        if hasattr(self.llm, "faction_manager") and getattr(self.llm, "faction_manager", None) is None:
+            self.llm.faction_manager = self.faction_manager
+        self.colony_stats_collector.record_birth()
         logger.info(f"Agent {agent.name} ({agent.id}) added to simulation")
         return agent.id
 
@@ -174,7 +195,30 @@ class SimulationEngine:
             except Exception as e:
                 logger.error(f"FSM error for {agent.name}: {e}")
 
-        # 3. Process event queue (events pushed during FSM run)
+        # 3. Process social interactions (conversations)
+        social_events = self.conversation_manager.detect_encounters(
+            self.agents, INTERACTION_RADIUS, tick
+        )
+        for ev in social_events:
+            self.event_queue.push(
+                ev.type,
+                ev.description,
+                ev.severity,
+                ev.agent_ids,
+                tick,
+                ev.position,
+            )
+            # F6: update relationships for socialize and knowledge share events
+            if ev.type in ("socialize", "knowledge_shared") and len(ev.agent_ids) == 2:
+                a1 = next((a for a in self.agents if a.id == ev.agent_ids[0]), None)
+                a2 = next((a for a in self.agents if a.id == ev.agent_ids[1]), None)
+                if a1 and a2:
+                    self._update_relationship(a1, a2, tick, score_delta=0.1)
+
+        # 3b. Process pending trade proposals
+        await self._process_trade_proposals(tick)
+
+        # 4. Process event queue (events pushed during FSM run)
         events = self.event_queue.drain()
 
         # 4. Poll LLM futures
@@ -216,7 +260,18 @@ class SimulationEngine:
         all_events = events + self.event_queue.drain()
 
         # 9. Build and broadcast snapshot
-        snapshot = self.builder.build_delta(tick, all_events)
+        colony_stats = self.colony_stats_collector.collect(
+            self.agents, self.faction_manager
+        )
+        colony_stats_dict = {
+            "population": colony_stats.population,
+            "births": colony_stats.births,
+            "deaths": colony_stats.deaths,
+            "total_resources": colony_stats.total_resources,
+        }
+        snapshot = self.builder.build_delta(
+            tick, all_events, faction_manager=self.faction_manager, colony_stats=colony_stats_dict
+        )
         if self.ws_manager:
             try:
                 await self.ws_manager.broadcast(
@@ -229,7 +284,9 @@ class SimulationEngine:
                 logger.error(f"Broadcast error: {e}")
 
         # 10. Store full snapshot for new WS clients
-        self._latest_full_snapshot = self.builder.build(tick, all_events).model_dump()
+        self._latest_full_snapshot = self.builder.build(
+            tick, all_events, faction_manager=self.faction_manager, colony_stats=colony_stats_dict
+        ).model_dump()
         if self.ws_manager:
             self.ws_manager.latest_snapshot = self._latest_full_snapshot
 
@@ -242,6 +299,108 @@ class SimulationEngine:
     # ------------------------------------------------------------------
     # Needs & death
     # ------------------------------------------------------------------
+
+    def _update_relationship(
+        self, agent_a: Agent, agent_b: Agent, tick: int, score_delta: float = 0.1
+    ) -> None:
+        """Update relationship data for two interacting agents."""
+        if agent_b.id not in agent_a.relationships:
+            agent_a.relationships[agent_b.id] = RelationshipData()
+        if agent_a.id not in agent_b.relationships:
+            agent_b.relationships[agent_a.id] = RelationshipData()
+
+        agent_a.relationships[agent_b.id].interaction_count += 1
+        agent_a.relationships[agent_b.id].last_interaction_tick = tick
+        agent_a.relationships[agent_b.id].score = max(
+            -1.0, min(1.0, agent_a.relationships[agent_b.id].score + score_delta)
+        )
+
+        agent_b.relationships[agent_a.id].interaction_count += 1
+        agent_b.relationships[agent_a.id].last_interaction_tick = tick
+        agent_b.relationships[agent_a.id].score = max(
+            -1.0, min(1.0, agent_b.relationships[agent_a.id].score + score_delta)
+        )
+
+    async def _evaluate_trade_proposal(self, agent: Agent, proposal: dict) -> bool:
+        """Evaluate a trade proposal via LLM. Returns True for accept, False for reject."""
+        # Build a trade-specific prompt
+        prompt = (
+            f"Trade proposal from {proposal.get('from')}: "
+            f"they offer {proposal.get('offer', {})} and request {proposal.get('request', {})}. "
+            f"Your current inventory: {agent.inventory}. "
+            f"Reply with ONLY a JSON object: {{'decision': 'accept' or 'reject'}}"
+        )
+        try:
+            future = self.llm.call_async(agent.id, prompt)
+            result = await asyncio.wait_for(future, timeout=0.5)
+            if result.get("success") and result.get("data"):
+                decision = result.get("data", {}).get("decision", "reject")
+                return decision == "accept"
+        except asyncio.TimeoutError:
+            pass
+        except Exception:
+            pass
+        # Fallback: deterministic evaluation based on resource availability
+        request = proposal.get("request", {})
+        return all(agent.inventory.get(res, 0) >= qty for res, qty in request.items())
+
+    async def _process_trade_proposals(self, tick: int) -> None:
+        """Process pending trade proposals in agents' conversation queues."""
+        proposals: list[tuple[Agent, dict]] = []
+        for agent in self.agents:
+            for msg in list(agent.conversation_queue):
+                if msg.content.get("type") != "trade_proposal":
+                    continue
+                # Skip proposals created in the current tick — let the target see them first
+                if msg.tick >= tick:
+                    continue
+                # Remove the proposal from queue so it's processed once
+                agent.conversation_queue.remove(msg)
+                proposals.append((agent, msg.content))
+
+        async def _process_one(agent: Agent, proposal: dict) -> None:
+            proposer_id = proposal.get("from")
+            offer = proposal.get("offer", {})
+            request = proposal.get("request", {})
+            proposer = next((a for a in self.agents if a.id == proposer_id), None)
+            if not proposer:
+                return
+
+            accepted = await self._evaluate_trade_proposal(agent, proposal)
+
+            if accepted:
+                # Verify both still have resources (race condition check)
+                proposer_has = all(proposer.inventory.get(res, 0) >= qty for res, qty in offer.items())
+                target_has = all(agent.inventory.get(res, 0) >= qty for res, qty in request.items())
+                if proposer_has and target_has:
+                    # Atomic swap
+                    for res, qty in offer.items():
+                        proposer.inventory[res] = proposer.inventory.get(res, 0) - qty
+                        agent.inventory[res] = agent.inventory.get(res, 0) + qty
+                    for res, qty in request.items():
+                        agent.inventory[res] = agent.inventory.get(res, 0) - qty
+                        proposer.inventory[res] = proposer.inventory.get(res, 0) + qty
+                    self._update_relationship(proposer, agent, tick, score_delta=0.2)
+                    self.event_queue.push(
+                        "trade",
+                        f"{proposer.name} traded {offer} for {request} with {agent.name}",
+                        "info",
+                        [proposer.id, agent.id],
+                        tick,
+                    )
+                    return
+
+            # Rejected or insufficient resources
+            self.event_queue.push(
+                "trade",
+                f"{agent.name} rejected trade from {proposer.name}: insufficient resources",
+                "info",
+                [proposer.id, agent.id],
+                tick,
+            )
+
+        if proposals:
+            await asyncio.gather(*[_process_one(agent, proposal) for agent, proposal in proposals])
 
     async def _process_needs(self, tick: int) -> None:
         """Decay hunger/thirst/energy and check for deaths."""
@@ -266,25 +425,82 @@ class SimulationEngine:
             agent.health = max(0.0, min(100.0, agent.health))
             agent.energy = max(0.0, min(100.0, agent.energy))
 
+            # Relationship decay
+            for other_id, rel in list(agent.relationships.items()):
+                if tick - rel.last_interaction_tick > DECAY_INTERVAL:
+                    rel.interaction_count = max(0, rel.interaction_count - 1)
+                    rel.score = max(-1.0, min(1.0, rel.score - 0.01))
+                    rel.last_interaction_tick = tick
+
+            # Child maturity
+            if agent.is_child and agent.age >= agent.maturity_age:
+                agent.is_child = False
+                agent.parent_id = None
+                self.event_queue.push(
+                    "maturity",
+                    f"{agent.name} has reached maturity",
+                    "info",
+                    [agent.id],
+                    tick,
+                )
+
             if agent.health <= 0:
-                dead_agents.append(agent)
+                cause = "thirst" if agent.thirst >= 100 else "starvation"
+                dead_agents.append((agent, cause))
                 continue
 
             # Death by old age
             if agent.age >= agent.max_age:
-                dead_agents.append(agent)
+                dead_agents.append((agent, "old_age"))
                 continue
 
-        for agent in dead_agents:
-            death_event = create_death_event(agent, tick)
+        for agent, cause in dead_agents:
+            self.colony_stats_collector.record_death()
+            # F4: transfer inventory to faction
+            self.faction_manager.transfer_inventory_on_death(agent)
+
+            # F3: orphan adoption
+            for child in list(self.agents):
+                if child.is_child and child.parent_id == agent.id:
+                    # Find nearest adult
+                    nearest = None
+                    nearest_dist = float("inf")
+                    for other in self.agents:
+                        if other.id == agent.id or other.id == child.id:
+                            continue
+                        if other.is_child:
+                            continue
+                        dist = math.hypot(
+                            other.position[0] - child.position[0],
+                            other.position[1] - child.position[1],
+                        )
+                        if dist < nearest_dist and dist <= INTERACTION_RADIUS:
+                            nearest = other
+                            nearest_dist = dist
+                    if nearest:
+                        child.parent_id = nearest.id
+                        self.event_queue.push(
+                            "adoption",
+                            f"{nearest.name} adopted {child.name} after {agent.name} died",
+                            "info",
+                            [nearest.id, child.id],
+                            tick,
+                        )
+                    else:
+                        # No adopter — accelerate decay
+                        child.health -= 2.0
+
+            death_event = create_death_event(agent, tick, cause=cause)
             self.event_queue.push(
                 death_event.type,
                 death_event.description,
                 death_event.severity,
                 death_event.agent_ids,
                 tick,
+                metadata=death_event.metadata,
             )
             self.agents.remove(agent)
+            del self.fsms[agent.id]
             self.builder.mark_agent_removed(agent.id)
             logger.warning(f"{agent.name} died at tick {tick}")
 
@@ -321,9 +537,13 @@ class SimulationEngine:
         fsm.transition_to("evaluate")
 
     def _find_reproduction_partner(self, agent: Agent) -> Optional[Agent]:
-        """Find a compatible reproduction partner nearby (lax thresholds)."""
+        """Find a compatible reproduction partner nearby (gated by interactions)."""
+        if agent.is_child:
+            return None
         for other in self.agents:
             if other.id == agent.id:
+                continue
+            if other.is_child:
                 continue
             if other.sex == agent.sex:
                 continue
@@ -332,6 +552,10 @@ class SimulationEngine:
             if getattr(other, '_is_reproducing', False):
                 continue
             if getattr(other, 'age', 0) < 100:  # too young
+                continue
+            # F8: require interaction threshold
+            rel = agent.relationships.get(other.id)
+            if not rel or rel.interaction_count < INTERACTION_THRESHOLD:
                 continue
             dist = math.hypot(
                 agent.position[0] - other.position[0],
@@ -344,18 +568,37 @@ class SimulationEngine:
     def _create_offspring(self, parent1: Agent, parent2: Agent, tick: int) -> Agent:
         """Create a new Agent as offspring of two parents."""
         import random
-        avg_x = (parent1.position[0] + parent2.position[0]) / 2 + random.uniform(-1, 1)
-        avg_y = (parent1.position[1] + parent2.position[1]) / 2 + random.uniform(-1, 1)
-        avg_x = max(1, min(self.world.width - 2, avg_x))
-        avg_y = max(1, min(self.world.height - 2, avg_y))
+
+        # Spawn adjacent to parent1 (search radius 2)
+        child_pos = (parent1.position[0], parent1.position[1])
+        for radius in range(1, 3):
+            found = False
+            for dx, dy in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)]:
+                if radius == 1 and (dx, dy) == (0, 0):
+                    continue
+                nx, ny = int(parent1.position[0]) + dx * radius, int(parent1.position[1]) + dy * radius
+                if (
+                    0 <= nx < self.world.width
+                    and 0 <= ny < self.world.height
+                    and not self._is_tile_occupied(nx, ny)
+                ):
+                    child_pos = (float(nx), float(ny))
+                    found = True
+                    break
+            if found:
+                break
 
         def inherit(a1_val, a2_val):
             return max(0, min(100, (a1_val + a2_val) // 2 + random.randint(-10, 10)))
 
+        # F3: derive stats from parent with ±15 random offset
+        def inherit_with_offset(parent_val):
+            return max(0, min(100, parent_val + random.randint(-15, 15)))
+
         child = Agent(
             id=f"agent_{uuid.uuid4().hex[:6]}",
             name=self._generate_agent_name(),
-            position=(avg_x, avg_y),
+            position=child_pos,
             role=random.choice([parent1.role, parent2.role]),
             strength=inherit(parent1.strength, parent2.strength),
             intelligence=inherit(parent1.intelligence, parent2.intelligence),
@@ -364,6 +607,9 @@ class SimulationEngine:
             sex=random.choice(["male", "female"]),
             age=0,
             max_age=random.randint(2000, 5000),
+            is_child=True,
+            parent_id=parent1.id,
+            maturity_age=random.randint(300, 700),
         )
         return child
 
@@ -378,9 +624,10 @@ class SimulationEngine:
         """Check needs and decide next state.
         
         Priority order:
+        0. Feed child if caregiver and child is critical
         1. Eat from inventory if hungry
         2. Drink if thirsty and at water
-        3. Gather food if hungry and at source
+        3. Gather food if hungry and at food source
         4. Rest if energy is low
         5. Move toward food/water if critical
         6. Reproduce if conditions met (lax thresholds)
@@ -389,6 +636,55 @@ class SimulationEngine:
         nearby = self.world.get_nearby_resources(agent.position, radius=8)
         food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
         water_nearby = [r for r in nearby if r[2] == "water"]
+
+        # ── 0. Feed child if caregiver and child is critical ──
+        if not agent.is_child and agent.inventory.get("berries", 0) > 0:
+            for child in self.agents:
+                if child.is_child and child.parent_id == agent.id:
+                    dist = math.hypot(
+                        agent.position[0] - child.position[0],
+                        agent.position[1] - child.position[1],
+                    )
+                    if dist <= INTERACTION_RADIUS:
+                        if child.hunger > 70:
+                            agent.current_action = "feed_child"
+                            agent.current_action_emoji = "🍼"
+                            agent.action_duration = get_action_duration(ActionType.FEED_CHILD, agent)
+                            agent.action_progress = 0.0
+                            # Store child id in active plan step so handler can find it
+                            agent.active_plan = {
+                                "steps": [{"action": "feed_child", "target": None, "child_id": child.id}]
+                            }
+                            agent.plan_step_index = 0
+                            fsm.transition_to("executing")
+                            return
+                        elif child.thirst > 70:
+                            # Child is thirsty — seek water to give drink
+                            nearby = self.world.get_nearby_resources(agent.position, radius=8)
+                            water_nearby = [r for r in nearby if r[2] == "water"]
+                            if water_nearby:
+                                target = (water_nearby[0][0], water_nearby[0][1])
+                                agent.current_action = "seeking water"
+                                agent.current_action_emoji = "🍼"
+                                agent.target_position = (float(target[0]), float(target[1]))
+                                agent.move_path = self.world.find_path(
+                                    (int(agent.position[0]), int(agent.position[1])), target
+                                )
+                                agent.move_progress = 0.0
+                                fsm.transition_to("moving")
+                                return
+                    else:
+                        # Move toward child
+                        target = (int(child.position[0]), int(child.position[1]))
+                        agent.current_action = "seeking child"
+                        agent.current_action_emoji = "🍼"
+                        agent.target_position = (float(target[0]), float(target[1]))
+                        agent.move_path = self.world.find_path(
+                            (int(agent.position[0]), int(agent.position[1])), target
+                        )
+                        agent.move_progress = 0.0
+                        fsm.transition_to("moving")
+                        return
 
         # ── 1. Eat from inventory if hungry ──
         if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
@@ -480,6 +776,11 @@ class SimulationEngine:
                     agent._reproduce_partner_id = partner.id
                     partner._reproduce_partner_id = agent.id
                     fsm.transition_to("executing")
+                    fsm_partner = self.fsms[partner.id]
+                    if fsm_partner.current_state == "idle":
+                        fsm_partner.transition_to("evaluate")
+                    if fsm_partner.current_state != "executing":
+                        fsm_partner.transition_to("executing")
                     return
 
         # Needs met → try LLM for higher-level planning
@@ -561,8 +862,7 @@ class SimulationEngine:
                 # Can't move anywhere — wait a tick
                 self.builder.mark_agent_dirty(agent.id)
                 return  # stay in moving, try again next tick
-            # Even if we nudged, we still consumed the path step when we retry
-            agent.move_path.pop(0)
+            # Nudged to adjacent tile; don't consume the path step yet
         else:
             # Tile is free — advance normally
             agent.move_path.pop(0)
@@ -616,7 +916,34 @@ class SimulationEngine:
                         int(agent.target_position[0]),
                         int(agent.target_position[1]),
                     )
-                result = handler(agent, self.world, target, None)
+                # For trade/feed_child, pass the plan step so extra params are available
+                step = None
+                if agent.active_plan and action_type in (ActionType.TRADE, ActionType.FEED_CHILD):
+                    step = agent.active_plan["steps"][agent.plan_step_index]
+                if action_type == ActionType.FEED_CHILD:
+                    result = handler(agent, self.world, target, step, self.agents)
+                else:
+                    result = handler(agent, self.world, target, step)
+                agent.last_action_result = result
+
+                # F5: enqueue trade proposal in target's conversation queue
+                if action_type == ActionType.TRADE and result.success and step:
+                    target_id = step.get("target")
+                    target_agent = next((a for a in self.agents if a.id == target_id), None)
+                    if target_agent:
+                        from app.simulation.conversation import Message
+                        target_agent.conversation_queue.append(
+                            Message(
+                                sender_id=agent.id,
+                                content={
+                                    "type": "trade_proposal",
+                                    "from": agent.id,
+                                    "offer": step.get("offer", {}),
+                                    "request": step.get("request", {}),
+                                },
+                                tick=tick,
+                            )
+                        )
 
                 if result.interrupted or not result.success:
                     fsm.transition_to("evaluate")
@@ -671,6 +998,8 @@ class SimulationEngine:
             return
 
         prompt = self.llm.build_prompt(agent, self.world)
+        # F1: consume last_action_result after prompt build to prevent stale accumulation
+        agent.last_action_result = None
         agent.llm_future = self.llm.call_async(agent.id, prompt)
         agent.llm_call_pending = True
         agent._last_llm_tick = tick
@@ -682,6 +1011,8 @@ class SimulationEngine:
         """Wait for LLM response while acting on instinct."""
         # If no future is set (cooldown or first trigger misfire), go back to evaluate
         if not agent.llm_future:
+            # F1: discard stale last_action_result on fallback
+            agent.last_action_result = None
             fsm.transition_to("evaluate")
             return
 

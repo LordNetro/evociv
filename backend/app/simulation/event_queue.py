@@ -81,7 +81,7 @@ def check_proximity_encounters(
                 a1.position[0] - a2.position[0],
                 a1.position[1] - a2.position[1],
             )
-            if dist < radius:
+            if dist <= radius:
                 events.append(
                     SimEvent(
                         event_id=f"encounter_{uuid.uuid4().hex[:8]}",

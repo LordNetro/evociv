@@ -1,5 +1,7 @@
 """Prompt templates for agent LLM interactions."""
 
+from typing import Any
+
 from app.simulation.agent import Agent
 
 SYSTEM_PROMPT_TEMPLATE = """You are {name}, a {role} in a tribal society.
@@ -26,9 +28,21 @@ STATE_PROMPT_TEMPLATE = """CURRENT STATE:
 - Inventory: {inventory}
 - Current action: {action}
 
+LAST ACTION RESULT:
+{last_action_result}
+
 NEARBY RESOURCES: {resources}
 
+KNOWLEDGE:
+{knowledge}
+
 NEARBY AGENTS: {agents}
+
+SOCIAL CONTEXT:
+{social_context}
+
+FACTION:
+{faction_context}
 
 RECENT MEMORIES:
 {memories}
@@ -43,9 +57,8 @@ Respond with ONLY this JSON format:
   "priority": "low" | "medium" | "high",
   "steps": [
     {
-      "action": "move" | "chop" | "drink" | "eat" | "gather" | "rest",
+      "action": "move" | "chop" | "drink" | "eat" | "gather" | "rest" | "trade" | "socialize" | "feed_child",
       "target": [x, y] or null,
-      "duration_secs": number (1-30),
       "reason": "Why this step"
     }
   ],
@@ -68,6 +81,9 @@ def build_agent_prompt(
     nearby_agents: str,
     memories: str,
     trigger: str,
+    last_action_result: Any = None,
+    social_context: str = "",
+    faction_context: str = "",
 ) -> str:
     """Build the full prompt for an agent LLM call."""
     personality = agent.__dict__.get("system_prompt", "") or (
@@ -76,7 +92,50 @@ def build_agent_prompt(
         f"sociability={agent.sociability}, speed={agent.speed}."
     )
 
+    # Format last action result
+    if last_action_result is None:
+        lar_str = "None (first tick)"
+    else:
+        from app.simulation.actions import ActionResult
+        if isinstance(last_action_result, ActionResult):
+            lar_str = (
+                f"- Action: {last_action_result.action_type}\n"
+                f"- Success: {last_action_result.success}\n"
+                f"- Effects: {last_action_result.action_summary}"
+            )
+        else:
+            lar_str = str(last_action_result)
+
+    # Format social context
+    if not social_context:
+        if agent.conversation_queue:
+            count = len(agent.conversation_queue)
+            latest = agent.conversation_queue[-1]
+            social_str = f"- Unread messages: {count}\n- Latest: {latest.content}"
+        else:
+            social_str = "- No pending messages"
+    else:
+        social_str = social_context
+
+    # Format faction context
+    if not faction_context:
+        if agent.faction_id:
+            faction_str = f'- You are a member of faction "{agent.faction_id}"'
+        else:
+            faction_str = "- You are not in a faction"
+    else:
+        faction_str = faction_context
+
     system = SYSTEM_PROMPT_TEMPLATE.format(name=agent.name, role=agent.role, personality=personality)
+
+    # Format knowledge
+    if agent.knowledge:
+        knowledge_str = "\n".join(
+            f"- You know: {subtype} is {props}"
+            for subtype, props in agent.knowledge.items()
+        )
+    else:
+        knowledge_str = "(you have no special knowledge yet)"
 
     state = STATE_PROMPT_TEMPLATE.format(
         x=agent.position[0],
@@ -87,8 +146,12 @@ def build_agent_prompt(
         health=agent.health,
         inventory=agent.inventory or {},
         action=agent.current_action or "idle",
+        last_action_result=lar_str,
         resources=nearby_resources,
+        knowledge=knowledge_str,
         agents=nearby_agents,
+        social_context=social_str,
+        faction_context=faction_str,
         memories=memories,
         trigger=trigger,
     )

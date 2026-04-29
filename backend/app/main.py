@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.db.database import engine, Base, async_session_maker
 from app.db import models  # noqa: F401 — registers ORM models with Base.metadata
 from app.api.ws import router as ws_router, manager as ws_manager
+from app.api.colony import router as colony_router
 from app.simulation.world import World
 from app.simulation.agent import Agent
 from app.simulation.engine import SimulationEngine
@@ -82,6 +83,7 @@ app = FastAPI(
 )
 
 app.include_router(ws_router)
+app.include_router(colony_router)
 
 
 @app.get("/health")

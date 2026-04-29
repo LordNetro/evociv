@@ -27,6 +27,11 @@ class AgentState(BaseModel):
     speed: int = 50
     system_prompt: str = ""
     monologue_history: list[str] = []
+    relationships: dict[str, dict] = {}
+    knowledge: dict[str, dict] = {}
+    is_child: bool = False
+    parent_id: str | None = None
+    faction_id: str | None = None
 
 
 # --- Simulation Metrics ---
@@ -53,6 +58,7 @@ class TileUpdate(BaseModel):
     y: int
     resource_type: str | None = None
     amount: int = 0
+    subtype: str | None = None
 
 
 # --- Server Message ---
@@ -76,3 +82,5 @@ class WorldSnapshot(BaseModel):
     removed_agents: list[str] = []
     metrics: SimulationMetrics = SimulationMetrics()
     events: list[SimEvent] = []
+    factions: list[dict] = []
+    colony_stats: dict | None = None

@@ -10,6 +10,9 @@ from app.simulation.event_queue import (
 )
 from app.simulation.engine import SimulationEngine
 from app.simulation.snapshot import WorldSnapshotBuilder
+from app.simulation.conversation import Message, ConversationManager
+from app.simulation.faction import Faction, FactionSummary, FactionManager
+from app.simulation.colony import ColonyStats, ColonyStatsCollector
 
 __all__ = [
     "Agent",
@@ -23,4 +26,11 @@ __all__ = [
     "create_death_event",
     "WorldSnapshotBuilder",
     "SimulationEngine",
+    "Message",
+    "ConversationManager",
+    "Faction",
+    "FactionSummary",
+    "FactionManager",
+    "ColonyStats",
+    "ColonyStatsCollector",
 ]

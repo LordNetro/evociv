@@ -10,6 +10,14 @@ from typing import Any, Optional
 
 
 @dataclass
+class RelationshipData:
+    """Tracks relationship between two agents."""
+    interaction_count: int = 0
+    last_interaction_tick: int = 0
+    score: float = 0.0  # -1.0 to 1.0
+
+
+@dataclass
 class Agent:
     """Simulation agent with physical state, attributes, FSM, and plan tracking."""
 
@@ -66,6 +74,16 @@ class Agent:
     last_thought: str = ""
     system_prompt: str = ""
     monologue_history: list = field(default_factory=list)
+
+    # Social features
+    last_action_result: Optional[Any] = None  # ActionResult from last tick
+    relationships: dict[str, RelationshipData] = field(default_factory=dict)
+    knowledge: dict[str, dict[str, Any]] = field(default_factory=dict)
+    conversation_queue: list = field(default_factory=list)
+    is_child: bool = False
+    parent_id: Optional[str] = None
+    maturity_age: int = 500
+    faction_id: Optional[str] = None
 
 
 class FSM:
@@ -181,9 +199,15 @@ class MockLLMOrchestrator:
 
     def build_prompt(self, agent: Agent, world=None) -> str:
         """Build a mock prompt string from agent state."""
+        from app.simulation.actions import ActionResult
+        lar = agent.last_action_result
+        lar_str = "None (first tick)"
+        if isinstance(lar, ActionResult):
+            lar_str = f"{lar.action_type} success={lar.success} {lar.action_summary}"
         return (
             f"Mock prompt for {agent.name}: "
-            f"hunger={agent.hunger:.0f}, thirst={agent.thirst:.0f}"
+            f"hunger={agent.hunger:.0f}, thirst={agent.thirst:.0f} "
+            f"last_action={lar_str}"
         )
 
     def call_async(self, agent_id: str, prompt: str) -> asyncio.Future:
@@ -244,6 +268,7 @@ class MockLLMOrchestrator:
 
 __all__ = [
     "Agent",
+    "RelationshipData",
     "FSM",
     "AgentFactory",
     "MockLLMOrchestrator",

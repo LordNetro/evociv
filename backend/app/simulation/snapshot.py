@@ -55,6 +55,18 @@ class WorldSnapshotBuilder:
             speed=agent.speed,
             system_prompt=agent.system_prompt[:200] if agent.system_prompt else "",
             monologue_history=list(agent.monologue_history[-5:]),
+            relationships={
+                k: {
+                    "interaction_count": v.interaction_count,
+                    "last_interaction_tick": v.last_interaction_tick,
+                    "score": round(v.score, 2),
+                }
+                for k, v in agent.relationships.items()
+            },
+            knowledge=dict(agent.knowledge),
+            is_child=agent.is_child,
+            parent_id=agent.parent_id,
+            faction_id=agent.faction_id,
         )
 
     def _compute_metrics(self) -> SimulationMetrics:
@@ -83,7 +95,9 @@ class WorldSnapshotBuilder:
             for e in engine_events
         ]
 
-    def build(self, tick: int, events: list[EngineEvent] | None = None) -> WorldSnapshot:
+    def build(
+        self, tick: int, events: list[EngineEvent] | None = None, faction_manager=None, colony_stats=None
+    ) -> WorldSnapshot:
         """
         Build a complete snapshot of the simulation state.
         Includes ALL agents (full state) and ALL tiles (those with resources).
@@ -98,6 +112,7 @@ class WorldSnapshotBuilder:
                         x=x, y=y,
                         resource_type=tile.resource_type,
                         amount=int(tile.amount),
+                        subtype=tile.subtype,
                     ))
 
         # All agents (full state)
@@ -105,17 +120,36 @@ class WorldSnapshotBuilder:
         for agent in self.agents:
             agents_dict[agent.id] = self._build_agent_state(agent)
 
+        factions = []
+        if faction_manager:
+            factions = [
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "color": f.color,
+                    "member_count": f.member_count,
+                    "shared_resources": f.shared_resources,
+                }
+                for f in faction_manager.list_all()
+            ]
+
+        removed = list(self._removed_agents)
+        self._removed_agents.clear()
         return WorldSnapshot(
             tick=tick,
             timestamp=time.time(),
             tiles=tiles,
             agents=agents_dict,
-            removed_agents=list(self._removed_agents),
+            removed_agents=removed,
             metrics=self._compute_metrics(),
             events=self._convert_events(events or []),
+            factions=factions,
+            colony_stats=colony_stats,
         )
 
-    def build_delta(self, tick: int, events: list[EngineEvent] | None = None) -> WorldSnapshot:
+    def build_delta(
+        self, tick: int, events: list[EngineEvent] | None = None, faction_manager=None, colony_stats=None
+    ) -> WorldSnapshot:
         """
         Build a delta snapshot — only changed data since last call.
         - Tiles: only dirty tiles
@@ -131,6 +165,7 @@ class WorldSnapshotBuilder:
                 x=x, y=y,
                 resource_type=tile.resource_type,
                 amount=int(tile.amount),
+                subtype=tile.subtype,
             ))
         self.world.reset_dirty_tiles()
 
@@ -139,9 +174,21 @@ class WorldSnapshotBuilder:
         for agent in self.agents:
             agents_dict[agent.id] = self._build_agent_state(agent)
 
-        # Removed agents (drain)
+        # Removed agents (don't clear here — build() will clear after full snapshot)
         removed = list(self._removed_agents)
-        self._removed_agents.clear()
+
+        factions = []
+        if faction_manager:
+            factions = [
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "color": f.color,
+                    "member_count": f.member_count,
+                    "shared_resources": f.shared_resources,
+                }
+                for f in faction_manager.list_all()
+            ]
 
         return WorldSnapshot(
             tick=tick,
@@ -151,6 +198,8 @@ class WorldSnapshotBuilder:
             removed_agents=removed,
             metrics=self._compute_metrics(),
             events=self._convert_events(events or []),
+            factions=factions,
+            colony_stats=colony_stats,
         )
 
 

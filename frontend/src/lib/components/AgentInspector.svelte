@@ -25,7 +25,10 @@
 		last_thought?: string;
 		system_prompt?: string;
 		monologue_history?: string[];
-		relationships?: Record<string, { interaction_count: number; last_interaction_tick: number; score: number }>;
+		relationships?: Record<
+			string,
+			{ interaction_count: number; last_interaction_tick: number; score: number }
+		>;
 		faction_id?: string;
 		knowledge?: Record<string, Record<string, unknown>>;
 		is_child?: boolean;
@@ -188,7 +191,9 @@
 						{@const other = ($simulationStore.agents as Record<string, AgentData>)?.[otherId]}
 						<div class="kv-row">
 							<span class="kv-key">{other?.name ?? otherId}</span>
-							<span class="kv-value">count:{rel.interaction_count} score:{rel.score.toFixed(2)}</span>
+							<span class="kv-value"
+								>count:{rel.interaction_count} score:{rel.score.toFixed(2)}</span
+							>
 						</div>
 					{/each}
 				{:else}
@@ -206,7 +211,9 @@
 						<span class="kv-key">Name</span>
 						<span class="kv-value" style="display:flex;align-items:center;gap:6px;">
 							{#if faction}
-								<span style="width:12px;height:12px;border-radius:50%;background:{faction.color};display:inline-block;"></span>
+								<span
+									style="width:12px;height:12px;border-radius:50%;background:{faction.color};display:inline-block;"
+								></span>
 								{faction.name}
 							{:else}
 								{agent.faction_id}

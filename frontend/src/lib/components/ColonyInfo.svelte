@@ -111,7 +111,10 @@
 		color: #fff;
 		padding: 14px;
 		border-radius: 8px;
-		font-family: system-ui, -apple-system, sans-serif;
+		font-family:
+			system-ui,
+			-apple-system,
+			sans-serif;
 		font-size: 13px;
 		z-index: 20;
 		backdrop-filter: blur(4px);

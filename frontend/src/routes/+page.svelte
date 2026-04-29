@@ -15,7 +15,7 @@
 </script>
 
 <div class="app">
-	<SimCanvas config={{ tileSize: 32, gridWidth: 50, gridHeight: 50 }} />
+	<SimCanvas />
 	<HUD />
 	<MetricChart />
 	<AgentInspector />

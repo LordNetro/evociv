@@ -1,57 +1,67 @@
 <script lang="ts">
-	import { Engine, type EngineConfig } from '$lib/canvas/engine';
+	import Scene from '$lib/canvas3d/Scene.svelte';
+	import Grid3D from '$lib/canvas3d/Grid3D.svelte';
+	import Resources3D from '$lib/canvas3d/Resources3D.svelte';
+	import WaterPlane from '$lib/canvas3d/WaterPlane.svelte';
+	import Agents3D from '$lib/canvas3d/Agents3D.svelte';
+	import AgentLabel from '$lib/canvas3d/AgentLabel.svelte';
+	import SelectionHighlight from '$lib/canvas3d/SelectionHighlight.svelte';
 	import { simulationStore } from '$lib/stores/simulationStore.svelte.js';
-	import { uiStore } from '$lib/stores/uiStore.svelte.js';
 
-	interface Props {
-		config?: EngineConfig;
+	interface TileData {
+		x: number;
+		y: number;
+		resource_type: string | null;
+		amount: number;
 	}
 
-	let { config = { tileSize: 32, gridWidth: 50, gridHeight: 50 } }: Props = $props();
-	let canvas: HTMLCanvasElement;
-	let engine: Engine | null = null;
+	interface AgentState {
+		id?: string;
+		name?: string;
+		current_action_emoji?: string;
+		position?: [number, number];
+		role?: string;
+		faction_id?: string;
+		is_child?: boolean;
+	}
 
-	$effect(() => {
-		engine = new Engine(canvas, config);
+	interface FactionState {
+		color: string;
+	}
 
-		const doResize = () => {
-			const rect = canvas.parentElement?.getBoundingClientRect();
-			if (rect) engine!.setSize(rect.width, rect.height);
-		};
+	interface Snapshot {
+		tiles?: TileData[];
+		agents?: Record<string, AgentState>;
+		factions?: Record<string, FactionState>;
+	}
 
-		doResize();
-		window.addEventListener('resize', doResize);
-
-		engine.onAgentClick = (agentId: string) => {
-			uiStore.selectAgent(agentId);
-		};
-
-		engine.start();
-
-		return () => {
-			window.removeEventListener('resize', doResize);
-			engine?.destroy();
-			engine = null;
-		};
-	});
-
-	// Feed snapshot data to engine
-	$effect(() => {
-		const snapshot = $simulationStore;
-		engine?.updateSnapshot(snapshot);
-	});
+	let snapshot = $derived(($simulationStore as Snapshot) ?? {});
+	let tiles = $derived(snapshot.tiles ?? []);
+	let waterTiles = $derived(tiles.filter((t) => t.resource_type === 'water'));
+	let resourceTiles = $derived(
+		tiles.filter((t) => t.resource_type !== null && t.resource_type !== 'water')
+	);
+	let agents = $derived(snapshot.agents ?? {});
+	let factions = $derived(snapshot.factions ?? {});
 </script>
 
-<canvas bind:this={canvas} class="game-canvas"></canvas>
+<div class="scene-wrapper">
+	<Scene>
+		<Grid3D {tiles} />
+		<WaterPlane {waterTiles} />
+		<Resources3D resources={resourceTiles} />
+		<Agents3D {agents} {factions} />
+		{#each Object.entries(agents) as [id, agent] (id)}
+			<AgentLabel agent={{ ...agent, id }} />
+		{/each}
+		<SelectionHighlight />
+	</Scene>
+</div>
 
 <style>
-	.game-canvas {
-		display: block;
+	.scene-wrapper {
 		width: 100%;
 		height: 100%;
-		cursor: grab;
-	}
-	.game-canvas:active {
-		cursor: grabbing;
+		display: block;
 	}
 </style>

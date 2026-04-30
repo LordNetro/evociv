@@ -53,25 +53,68 @@ class RealLLMOrchestrator:
         """Public read-only: None=untested, True=up, False=down."""
         return self._real_available
 
-    def build_prompt(self, agent: Agent, world=None) -> str:
+    def build_prompt(self, agent: Agent, world=None, agents=None) -> str:
         """Build prompt with agent state, memories, and nearby info."""
         nearby_resources = "none"
+        nearby_structures = ""
         if world:
             resources = world.get_nearby_resources(agent.position, radius=5)
             if resources:
                 nearby_resources = "; ".join(
                     f"{r[2]} at ({r[0]},{r[1]}) amount={r[3]}" for r in resources[:5]
                 )
+            structures = world.structures.get_nearby_structures(
+                (int(agent.position[0]), int(agent.position[1])), radius=5
+            )
+            if structures:
+                nearby_structures = "; ".join(
+                    f"{s.structure_type} at ({s.position[0]},{s.position[1]})"
+                    for s in structures[:5]
+                )
         memories = self.memory.format_recent(agent.id, n=5)
         trigger = agent.last_thought or "Time to decide what to do"
         # Resolve faction context if available
         faction_context = ""
         if agent.faction_id:
-            faction = self.faction_manager.get_faction(agent.faction_id) if hasattr(self, "faction_manager") else None
+            faction = (
+                self.faction_manager.get_faction(agent.faction_id)
+                if getattr(self, "faction_manager", None) is not None
+                else None
+            )
             if faction:
                 faction_context = f'- You are a member of "{faction.name}" (color: {faction.color})'
             else:
                 faction_context = f'- You are a member of faction "{agent.faction_id}"'
+
+        # Compute craftable recipes
+        from app.ai.prompts import _get_craftable_recipes
+        craftable_recipes = _get_craftable_recipes(agent)
+
+        # Format equipment
+        equipment = (
+            f"weapon: {agent.equipment.get('weapon', 'fist')}, "
+            f"armor: {agent.equipment.get('armor', 'none')}, "
+            f"tool: {agent.equipment.get('tool', 'none')}"
+        )
+
+        # Compute nearby hostiles
+        nearby_hostiles = ""
+        if agents:
+            import math
+            hostiles: list[str] = []
+            for other in agents:
+                if other.id == agent.id:
+                    continue
+                dist = math.hypot(
+                    agent.position[0] - other.position[0],
+                    agent.position[1] - other.position[1],
+                )
+                if dist <= 5.0:
+                    # Hostile if different faction or no faction
+                    if other.faction_id != agent.faction_id:
+                        hostiles.append(f"{other.name} ({other.role}) at ({int(other.position[0])},{int(other.position[1])})")
+            nearby_hostiles = "; ".join(hostiles)
+
         return build_agent_prompt(
             agent=agent,
             nearby_resources=nearby_resources,
@@ -80,6 +123,10 @@ class RealLLMOrchestrator:
             trigger=trigger,
             last_action_result=agent.last_action_result,
             faction_context=faction_context,
+            nearby_structures=nearby_structures,
+            craftable_recipes=craftable_recipes,
+            equipment=equipment,
+            nearby_hostiles=nearby_hostiles,
         )
 
     async def check_availability(self) -> bool:

@@ -92,8 +92,8 @@ Extends the core simulation with a full social simulation layer: relationships, 
 
 | # | Requirement | Strength |
 |---|-------------|----------|
-| F7-R1 | A new REST endpoint `GET /api/colony` MUST return colony-level statistics: total population, births count (agents spawned this session), deaths count, alive/dead ratio, distribution by role, sex, age groups, total resources across all agents, and active factions list. | MUST |
-| F7-R2 | The WebSocket snapshot MUST be extended with a `colony_stats` field containing a subset of frequently-changing metrics: population, births, deaths, and total resources. | MUST |
+| F7-R1 | A new REST endpoint `GET /api/colony` MUST return colony-level statistics: total population, births count (agents spawned this session), deaths count, alive/dead ratio, distribution by role, sex, age groups, total resources across all agents, total structures, structures by type, total equipment (weapons/armor held by agents), and active factions list. | MUST |
+| F7-R2 | The WebSocket snapshot MUST be extended with a `colony_stats` field containing a subset of frequently-changing metrics: population, births, deaths, total resources, total_structures, structures_by_type, and total_equipment. | MUST |
 | F7-R3 | A new `ColonyInfo.svelte` component MUST be created in the frontend that displays: population (total, births, deaths), demographic breakdown (role/age distribution as simple bars or table), total resources, and active factions. | MUST |
 | F7-R4 | The ColonyInfo panel MUST auto-refresh from the WebSocket snapshot data (no polling). The REST endpoint serves as the initial load and for detailed data not in the snapshot. | MUST |
 | F7-R5 | The frontend HUD MUST show key colony metrics as minimal widgets: population count, births this session, deaths this session. | MUST |
@@ -109,6 +109,45 @@ Extends the core simulation with a full social simulation layer: relationships, 
 | F8-R5 | The AgentInspector panel in the frontend MUST display a "Relationships" section listing each known agent's name, interaction count, and relationship score. | MUST |
 | F8-R6 | Relationship data MUST be included in the WebSocket snapshot per-agent so the frontend can render it. | MUST |
 | F8-R7 | Relationship-aware reproduction MUST replace the current unconditional reproduction logic. Agents with zero interactions MUST NOT be able to reproduce. | MUST |
+
+**F9 — New ActionTypes in Agent Society**
+
+| # | Requirement | Strength |
+|---|-------------|----------|
+| F9-R1 | The `ActionType` enum SHALL be extended with 10 new values: MINE, HUNT, FISH, FARM, CRAFT, BUILD, ATTACK, GUARD, EXPLORE, HEAL. These SHALL be registered in `REGISTRY`, `ACTION_EMOJIS`, and `get_action_duration()`. | MUST |
+| F9-R2 | All 20 ActionTypes (10 original + 10 new) SHALL have corresponding handler functions registered in the `REGISTRY` dict. | MUST |
+
+**F10 — Agent Equipment Fields**
+
+| # | Requirement | Strength |
+|---|-------------|----------|
+| F10-R1 | The `Agent` dataclass SHALL gain an `equipment: dict[str, str]` field with keys `weapon`, `armor`, `tool`. Default values: `{"weapon": "fist", "armor": "none", "tool": "none"}`. | MUST |
+| F10-R2 | The `equipment` field SHALL be serialized in the `AgentState` Pydantic model and included in the WebSocket snapshot. | MUST |
+
+**F11 — Role-Specific Behavioral Context in LLM Prompts**
+
+| # | Requirement | Strength |
+|---|-------------|----------|
+| F11-R1 | The LLM prompt builder SHALL include role-specific behavioral guidance. Each role's description, allowed actions, and priority intent SHALL appear in both the system prompt and the state prompt context. | MUST |
+| F11-R2 | The `JSON_FORMAT_INSTRUCTION` SHALL include all 10 new actions in the steps action enum alongside existing actions. | MUST |
+
+**F12 — Structure Awareness in LLM Prompts**
+
+| # | Requirement | Strength |
+|---|-------------|----------|
+| F12-R1 | The LLM prompt SHALL include context about nearby structures: their type, position, owner, and health. This context SHALL appear in the state prompt template alongside nearby resources. | MUST |
+
+**F13 — Equipment in AgentState Schema**
+
+| # | Requirement | Strength |
+|---|-------------|----------|
+| F13-R1 | The `AgentState` Pydantic model SHALL gain an `equipment: dict[str, str]` field mirroring the `Agent.equipment` field. | MUST |
+
+**F14 — Structures in WorldSnapshot Schema**
+
+| # | Requirement | Strength |
+|---|-------------|----------|
+| F14-R1 | The `WorldSnapshot` Pydantic model SHALL gain an optional `structures: list[dict]` field. Each structure dict SHALL contain: `id`, `type`, `position`, `owner_id`, `health`, `max_health`, and `properties`. | MUST |
 
 #### Scenarios
 
@@ -179,6 +218,37 @@ Extends the core simulation with a full social simulation layer: relationships, 
 - GIVEN the AgentInspector panel WHEN an agent has 2 relationships THEN the panel shows a "Relationships" section listing both agents with their interaction count and score
 - GIVEN an agent's relationships include Agent B with `score=0.8` WHEN Agent A evaluates trade with Agent B THEN the LLM receives the positive relationship score as favorable context
 
+**F7 — Colony Information Panel (Extended Metrics)**
+
+- GIVEN a simulation with 5 structures (2 houses, 1 forge, 1 farm, 1 wall) WHEN `GET /api/colony` is called THEN the response includes `total_structures=5` and `structures_by_type={"house": 2, "forge": 1, "farm": 1, "wall": 1}`
+
+**F9 — New ActionTypes**
+
+- GIVEN the ActionType enum WHEN checking for MINE, HUNT, FISH, FARM, CRAFT, BUILD, ATTACK, GUARD, EXPLORE, HEAL THEN each exists as a valid member
+- GIVEN the REGISTRY dict WHEN all 10 new ActionTypes are checked THEN each has a corresponding handler function registered
+
+**F10 — Agent Equipment Fields**
+
+- GIVEN a newly created Agent WHEN the agent is initialized THEN `agent.equipment` is `{"weapon": "fist", "armor": "none", "tool": "none"}`
+- GIVEN an agent with `equipment={"weapon": "spear", "armor": "hide_vest", "tool": "stone_axe"}` WHEN a WorldSnapshot is built THEN the agent's AgentState includes the `equipment` field with the same values
+
+**F11 — Role-Specific Behavioral Context in LLM Prompts**
+
+- GIVEN an agent with role `hunter` WHEN `build_agent_prompt()` is called THEN the system prompt includes role-specific guidance (e.g., "As a hunter, you track and hunt animals for food and hide.")
+- GIVEN the `JSON_FORMAT_INSTRUCTION` WHEN inspected THEN the steps action enum includes "mine", "hunt", "fish", "farm", "craft", "build", "attack", "guard", "explore", "heal"
+
+**F12 — Structure Awareness in LLM Prompts**
+
+- GIVEN an agent near a forge structure at position (12,12) and a farm at (15,15) WHEN the LLM prompt is built THEN the prompt includes a `NEARBY STRUCTURES:` section listing the forge and farm with their positions
+
+**F13 — Equipment in AgentState Schema**
+
+- GIVEN an AgentState created from an agent with equipment WHEN the AgentState is serialized to JSON THEN the JSON includes `"equipment": {"weapon": "...", "armor": "...", "tool": "..."}`
+
+**F14 — Structures in WorldSnapshot Schema**
+
+- GIVEN a WorldSnapshot built with 2 active structures WHEN the snapshot is serialized THEN the `structures` list contains both structure dicts with all specified fields (id, type, position, owner_id, health, max_health, properties)
+
 #### Acceptance Criteria
 
 - [x] **F1**: An action's result (success/failure, stat changes, inventory changes) appears in the next LLM prompt as `last_action_result`. First-tick agents gracefully pass `null`. LLM timeouts fall back to instincts and do NOT accumulate stale context.
@@ -187,7 +257,13 @@ Extends the core simulation with a full social simulation layer: relationships, 
 - [x] **F4**: Faction CRUD works. Agents show faction color in the canvas. Agent death transfers inventory to faction shared pool. Same-faction members get trade preference via LLM context.
 - [x] **F5**: TRADE action works between nearby agents. Proposer specifies offer/request. Target LLM evaluates and accepts/rejects. Accepted trades execute atomically. Rejected trades log without inventory changes. Successful trades increment interaction counts.
 - [x] **F6**: Proximity-based conversations trigger automatically. Messages are enqueued FIFO (max 50). LLM processes messages during the next planning cycle. Knowledge is shared via conversation messages. Interaction counts increment. Events are logged. Cap of 5 conversation pairs per tick enforced.
-- [x] **F7**: `GET /api/colony` returns demographics and resource totals. WebSocket snapshot includes `colony_stats`. ColonyInfo.svelte renders population, births, deaths, resource totals, and factions. Frontend HUD shows key metric widgets.
+- [x] **F7**: `GET /api/colony` returns demographics, resource totals, structure counts, and equipment stats. WebSocket snapshot includes `colony_stats` with structure/equipment metrics. ColonyInfo.svelte renders population, births, deaths, resource totals, structures, and factions. Frontend HUD shows key metric widgets.
 - [x] **F8**: `relationships` dict tracks interactions per agent pair. REPRODUCE is gated by `interaction_count >= INTERACTION_THRESHOLD`. Relationships decay over time without interaction. AgentInspector shows relationships. Unconditional reproduction is replaced.
-- [x] **Backward compatibility**: All existing simulation-engine tests pass without modification. Existing agents without `faction_id`, `is_child`, `knowledge`, or `relationships` continue to function with default values.
+- [x] **F9**: ActionType enum includes all 20 types. All new action types (MINE, HUNT, FISH, FARM, CRAFT, BUILD, ATTACK, GUARD, EXPLORE, HEAL) registered in REGISTRY with handler functions.
+- [x] **F10**: Agent dataclass has equipment field with defaults. Serialized in AgentState and WebSocket snapshots.
+- [x] **F11**: LLM prompts include role-specific behavioral guidance. JSON_FORMAT_INSTRUCTION includes all new actions.
+- [x] **F12**: LLM prompts include NEARBY STRUCTURES section with type, position, owner, health.
+- [x] **F13**: AgentState Pydantic model includes equipment field.
+- [x] **F14**: WorldSnapshot includes optional structures list with all required fields.
+- [x] **Backward compatibility**: All existing simulation-engine tests pass without modification. Existing agents without `faction_id`, `is_child`, `knowledge`, `relationships`, or `equipment` continue to function with default values.
 - [ ] **Performance**: Tick loop with all social features active (20 agents, 3 factions, conversations, trades) completes within 150ms per tick on reference hardware.

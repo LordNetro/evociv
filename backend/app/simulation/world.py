@@ -6,12 +6,18 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from app.simulation.structures import StructureManager
+
 
 class ResourceType(str, Enum):
     TREE = "tree"
     WATER = "water"
     BERRIES = "berries"
     STONE = "stone"
+    IRON = "iron_ore"
+    CLAY = "clay"
+    SAND = "sand"
+    FIBER = "fiber"
 
 
 @dataclass
@@ -38,6 +44,7 @@ class World:
             [Tile(x=x, y=y) for x in range(width)] for y in range(height)
         ]
         self.dirty_tiles: set[tuple[int, int]] = set()
+        self.structures = StructureManager()
         self.generate_initial_resources()
 
     def get_tile(self, x: int, y: int) -> Tile:
@@ -54,10 +61,17 @@ class World:
         self.dirty_tiles.add((x, y))
 
     def is_passable(self, x: int, y: int) -> bool:
-        """Check if a tile is within bounds and not blocked."""
+        """Check if a tile is within bounds and not blocked by terrain or structure."""
         if not (0 <= x < self.width and 0 <= y < self.height):
             return False
-        return not self.grid[y][x].blocked
+        if self.grid[y][x].blocked:
+            return False
+        structure = self.structures.get_structure_at((x, y))
+        if structure is not None:
+            from app.simulation.structures import STRUCTURE_DEFINITIONS
+            if not STRUCTURE_DEFINITIONS.get(structure.structure_type, {}).get("passable", True):
+                return False
+        return True
 
     def get_neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
         """Return 4-directional passable neighbors (up, down, left, right)."""
@@ -114,10 +128,41 @@ class World:
             empty_tiles, ResourceType.STONE, count=20, amount_range=(10, 30), regen_rate=0.0, rng=rng
         )
 
+        # Iron ore: ~15, amount 5-20 each, regen_rate 0
+        self._place_resource(
+            empty_tiles, ResourceType.IRON, count=15, amount_range=(5, 20), regen_rate=0.0, rng=rng
+        )
+
+        # Clay: ~25, amount 5-10 each, regen_rate 0.02
+        self._place_resource(
+            empty_tiles, ResourceType.CLAY, count=25, amount_range=(5, 10), regen_rate=0.02, rng=rng
+        )
+
+        # Sand: ~30, amount 10-20 each, regen_rate 0
+        self._place_resource(
+            empty_tiles, ResourceType.SAND, count=30, amount_range=(10, 20), regen_rate=0.0, rng=rng
+        )
+
+        # Fiber: ~20, amount 3-8 each, regen_rate 0.05
+        self._place_resource(
+            empty_tiles, ResourceType.FIBER, count=20, amount_range=(3, 8), regen_rate=0.05, rng=rng
+        )
+
+        # Animals: deer ~10, rabbit ~6, boar ~4, amount 1-3 each, regen_rate 0.02
+        self._place_resource(
+            empty_tiles, "deer", count=10, amount_range=(1, 3), regen_rate=0.02, rng=rng
+        )
+        self._place_resource(
+            empty_tiles, "rabbit", count=6, amount_range=(1, 3), regen_rate=0.02, rng=rng
+        )
+        self._place_resource(
+            empty_tiles, "boar", count=4, amount_range=(1, 3), regen_rate=0.02, rng=rng
+        )
+
     def _place_resource(
         self,
         available: list[tuple[int, int]],
-        resource_type: ResourceType,
+        resource_type: ResourceType | str,
         count: int,
         amount_range: tuple[int, int],
         regen_rate: float,
@@ -125,6 +170,7 @@ class World:
     ) -> None:
         """Place a resource on up to `count` tiles from `available`."""
         placed = 0
+        rt_value = resource_type.value if isinstance(resource_type, ResourceType) else resource_type
         while placed < count and available:
             x, y = available.pop()
             amount = rng.randint(*amount_range)
@@ -140,7 +186,7 @@ class World:
             tile = Tile(
                 x=x,
                 y=y,
-                resource_type=resource_type.value,
+                resource_type=rt_value,
                 amount=amount,
                 max_amount=amount,
                 regen_rate=regen_rate,

@@ -34,6 +34,7 @@ class AgentState(BaseModel):
     faction_id: str | None = None
     current_dialogue: str | None = None
     dialogue_type: str | None = None
+    equipment: dict[str, str] = {}
 
 
 # --- Simulation Metrics ---
@@ -75,6 +76,16 @@ class ClientMessage(BaseModel):
     payload: dict
 
 
+# --- Structure Update ---
+class StructureUpdate(BaseModel):
+    id: str
+    structure_type: str
+    position: tuple[int, int]
+    health: float
+    max_health: float
+    owner_id: str | None = None
+
+
 # --- World Snapshot ---
 class WorldSnapshot(BaseModel):
     tick: int
@@ -86,3 +97,4 @@ class WorldSnapshot(BaseModel):
     events: list[SimEvent] = []
     factions: list[dict] = []
     colony_stats: dict | None = None
+    structures: list[StructureUpdate] = []

@@ -138,11 +138,13 @@ def create_death_event(agent: Agent, current_tick: int, cause: str = "starvation
         "thirst": f"{agent.name} died of dehydration",
         "violence": f"{agent.name} was killed",
     }
+    if cause not in descriptions:
+        raise ValueError(f"Unknown death cause: {cause}")
     return SimEvent(
         event_id=f"death_{uuid.uuid4().hex[:8]}",
         type="death",
         severity="critical",
-        description=descriptions.get(cause, descriptions["starvation"]),
+        description=descriptions[cause],
         agent_ids=[agent.id],
         tick=current_tick,
         position=agent.position,

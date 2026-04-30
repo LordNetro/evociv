@@ -44,6 +44,7 @@ class Agent:
 
     # Role
     role: str = "gatherer"
+    role_data: dict = field(default_factory=dict)
 
     # FSM
     fsm_state: str = "idle"
@@ -89,6 +90,21 @@ class Agent:
     current_dialogue: str | None = None
     dialogue_type: str | None = None  # "speech" | "thought"
 
+    # Equipment
+    equipment: dict[str, str] = field(
+        default_factory=lambda: {"weapon": "fist", "armor": "none", "tool": "none"}
+    )
+    is_guarding: bool = False
+
+    # Combat tracking
+    _combat_attacker_id: str | None = None
+
+    # Storage capacity bonus tracking
+    _storage_nearby: bool = False
+
+    # Exploration tracking
+    explored_tiles: set[tuple[int, int]] = field(default_factory=set)
+
 
 class FSM:
     """Simple state machine for agent behaviour."""
@@ -120,8 +136,11 @@ class AgentFactory:
     @staticmethod
     def from_config(config: dict[str, Any]) -> Agent:
         """Create a single agent from a config dict."""
+        from app.simulation.roles import apply_role_stats
+
         attrs = config.get("attributes", {})
-        return Agent(
+        equipment = config.get("equipment", {"weapon": "fist", "armor": "none", "tool": "none"})
+        agent = Agent(
             id=config.get("id", f"agent_{uuid.uuid4().hex[:6]}"),
             name=config["name"],
             position=tuple(config.get("position", [0.0, 0.0])),  # type: ignore[arg-type]
@@ -133,7 +152,10 @@ class AgentFactory:
             sex=attrs.get("sex", "male"),
             age=attrs.get("age", 0),
             max_age=attrs.get("max_age", 3000),
+            equipment=equipment,
         )
+        apply_role_stats(agent)
+        return agent
 
     @staticmethod
     def create_default_agents() -> list[Agent]:

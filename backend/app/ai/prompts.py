@@ -4,13 +4,29 @@ from typing import Any
 
 from app.simulation.agent import Agent
 
+ROLE_GUIDANCE: dict[str, str] = {
+    "gatherer": "As a gatherer, your priority is collecting resources for the tribe. Gather berries, wood, fiber, and other materials.",
+    "hunter": "As a hunter, your priority is hunting animals for meat and hide. Use spears or bows to hunt deer, rabbits, and boars.",
+    "fisher": "As a fisher, your priority is fishing for food. Use a fishing rod near water sources.",
+    "farmer": "As a farmer, your priority is farming crops. Build and maintain farms to produce berries and fiber.",
+    "miner": "As a miner, your priority is mining stone and iron ore. Use pickaxes to extract minerals.",
+    "builder": "As a builder, your priority is constructing buildings for the tribe. Gather wood and stone to build houses, walls, and workbenches.",
+    "crafter": "As a crafter, your priority is crafting tools and weapons. Gather materials and use workbenches to create better equipment.",
+    "scout": "As a scout, your priority is exploring the world. Discover new resources and territories for the tribe.",
+    "fighter": "As a fighter, your priority is defending the tribe and engaging in combat. Use weapons and armor to protect your people.",
+    "healer": "As a healer, your priority is healing injured tribe members. Gather berries and use your intelligence to restore health.",
+}
+
+
 SYSTEM_PROMPT_TEMPLATE = """You are {name}, a {role} in a tribal society.
 
 Your personality:
 {personality}
 
-You live in a 50x50 grid world with resources like trees (for wood), water, berries (for food), and stone.
-You can move, chop trees, drink water, eat berries, gather resources, and rest.
+You live in a 50x50 grid world with resources like trees (for wood), water, berries (for food), stone, iron ore, clay, sand, fiber, and animals (deer, rabbit, boar).
+You can move, chop trees, drink water, eat berries, gather resources, rest, mine minerals, explore unknown areas, craft tools and weapons, hunt animals, fish, build structures, farm crops, attack enemies, guard yourself, heal, trade with others, socialize, and feed children.
+Structures such as workbenches, forges, houses, walls, and farms can be built to support the tribe.
+Crafting tools like axes, pickaxes, spears, and fishing rods improves your efficiency.
 
 RULES:
 - You MUST respond ONLY with a valid JSON object. No other text.
@@ -28,10 +44,21 @@ STATE_PROMPT_TEMPLATE = """CURRENT STATE:
 - Inventory: {inventory}
 - Current action: {action}
 
+EQUIPMENT:
+{equipment}
+
 LAST ACTION RESULT:
 {last_action_result}
 
 NEARBY RESOURCES: {resources}
+
+NEARBY STRUCTURES: {nearby_structures}
+
+CRAFTABLE RECIPES:
+{craftable_recipes}
+
+NEARBY HOSTILES:
+{nearby_hostiles}
 
 KNOWLEDGE:
 {knowledge}
@@ -57,7 +84,7 @@ Respond with ONLY this JSON format:
   "priority": "low" | "medium" | "high",
   "steps": [
     {
-      "action": "move" | "chop" | "drink" | "eat" | "gather" | "rest" | "trade" | "socialize" | "feed_child",
+      "action": "move" | "chop" | "drink" | "eat" | "gather" | "rest" | "mine" | "explore" | "craft" | "hunt" | "fish" | "build" | "farm" | "attack" | "guard" | "heal" | "trade" | "socialize" | "feed_child",
       "target": [x, y] or null,
       "reason": "Why this step"
     }
@@ -76,6 +103,24 @@ Keep plans to 2-4 steps maximum.
 """
 
 
+def _get_craftable_recipes(agent: Agent) -> str:
+    """Return a formatted list of recipes the agent can craft with current inventory."""
+    from app.simulation.crafting import RECIPES
+    from app.simulation.roles import role_allows_action
+    from app.simulation.actions import ActionType
+
+    if not role_allows_action(agent.role, ActionType.CRAFT):
+        return ""
+
+    craftable: list[str] = []
+    for name, recipe in RECIPES.items():
+        if all(agent.inventory.get(item, 0) >= qty for item, qty in recipe.inputs.items()):
+            craftable.append(
+                f"- {name} ({recipe.category}): {recipe.inputs} -> {recipe.output}"
+            )
+    return "\n".join(craftable)
+
+
 def build_agent_prompt(
     agent: Agent,
     nearby_resources: str,
@@ -85,6 +130,10 @@ def build_agent_prompt(
     last_action_result: Any = None,
     social_context: str = "",
     faction_context: str = "",
+    nearby_structures: str = "",
+    craftable_recipes: str = "",
+    equipment: str = "",
+    nearby_hostiles: str = "",
 ) -> str:
     """Build the full prompt for an agent LLM call."""
     personality = agent.__dict__.get("system_prompt", "") or (
@@ -129,6 +178,11 @@ def build_agent_prompt(
 
     system = SYSTEM_PROMPT_TEMPLATE.format(name=agent.name, role=agent.role, personality=personality)
 
+    # Append role-specific guidance
+    role_guidance = ROLE_GUIDANCE.get(agent.role, "")
+    if role_guidance:
+        system = f"{system}\n\n{role_guidance}"
+
     # Format knowledge
     if agent.knowledge:
         knowledge_str = "\n".join(
@@ -137,6 +191,18 @@ def build_agent_prompt(
         )
     else:
         knowledge_str = "(you have no special knowledge yet)"
+
+    # Format nearby structures
+    structures_str = nearby_structures if nearby_structures else "(none)"
+
+    # Format craftable recipes
+    recipes_str = craftable_recipes if craftable_recipes else "(none)"
+
+    # Format equipment
+    equipment_str = equipment if equipment else "(none)"
+
+    # Format nearby hostiles
+    hostiles_str = nearby_hostiles if nearby_hostiles else "(none)"
 
     state = STATE_PROMPT_TEMPLATE.format(
         x=agent.position[0],
@@ -147,8 +213,12 @@ def build_agent_prompt(
         health=agent.health,
         inventory=agent.inventory or {},
         action=agent.current_action or "idle",
+        equipment=equipment_str,
         last_action_result=lar_str,
         resources=nearby_resources,
+        nearby_structures=structures_str,
+        craftable_recipes=recipes_str,
+        nearby_hostiles=hostiles_str,
         knowledge=knowledge_str,
         agents=nearby_agents,
         social_context=social_str,

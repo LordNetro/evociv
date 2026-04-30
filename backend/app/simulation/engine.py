@@ -29,14 +29,15 @@ from app.simulation.conversation import ConversationManager
 from app.simulation.faction import FactionManager
 from app.simulation.colony import ColonyStatsCollector
 from app.simulation.conversation import Message
+from app.simulation import roles as roles_module
 
 logger = logging.getLogger("evociv.engine")
 logger.setLevel(logging.INFO)
 
 # Constants
-HUNGER_DECAY = 0.1        # per tick
-THIRST_DECAY = 0.15       # per tick
-ENERGY_DECAY = 0.05       # per tick
+HUNGER_DECAY = 0.04        # per tick
+THIRST_DECAY = 0.06       # per tick
+ENERGY_DECAY = 0.03       # per tick
 CRITICAL_HUNGER = 70       # hunger above this triggers instinct food seeking
 CRITICAL_THIRST = 70       # thirst above this triggers instinct water seeking
 CRITICAL_LLM_TRIGGER = 85  # only LLM trigger on critical (for higher-level plans)
@@ -89,6 +90,7 @@ class SimulationEngine:
 
         # State tracking
         self._discovered_set: set[tuple[str, int, int]] = set()
+        self._agent_health: dict[str, float] = {a.id: a.health for a in agents}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -134,6 +136,9 @@ class SimulationEngine:
 
     def add_agent(self, agent: Agent) -> str:
         """Add a new agent to the simulation. Returns the agent ID."""
+        # Apply role stats and role_data if not already set
+        if not agent.role_data:
+            roles_module.apply_role_stats(agent)
         # Assign to a faction if not already assigned (before append so index is correct)
         if not agent.faction_id:
             factions = self.faction_manager.list_all()
@@ -145,6 +150,7 @@ class SimulationEngine:
                 self.faction_manager.join(agent.id, faction.id)
         self.agents.append(agent)
         self.fsms[agent.id] = FSM()
+        self._agent_health[agent.id] = agent.health
         self.builder.mark_agent_dirty(agent.id)
         # Inject faction_manager into LLM orchestrator if needed
         if hasattr(self.llm, "faction_manager") and getattr(self.llm, "faction_manager", None) is None:
@@ -189,6 +195,17 @@ class SimulationEngine:
         # 1. Decay physical needs and check death
         await self._process_needs(tick)
 
+        # 1b. Update storage proximity flags
+        for agent in self.agents:
+            ax, ay = int(agent.position[0]), int(agent.position[1])
+            agent._storage_nearby = False
+            for struct in self.world.structures.list_all():
+                if struct.structure_type == "storage_hut":
+                    sx, sy = struct.position
+                    if max(abs(sx - ax), abs(sy - ay)) <= 3:
+                        agent._storage_nearby = True
+                        break
+
         # 2. Run FSM for each agent
         for agent in list(self.agents):  # Copy in case agents die mid-iteration
             try:
@@ -227,6 +244,9 @@ class SimulationEngine:
 
         # 5. World regeneration
         self.world.regenerate_resources()
+
+        # 5b. Structure farm bonuses
+        self.world.structures.tick_farms(self.agents)
 
         # 6. Proximity checks
         proximity_events = check_proximity_encounters(
@@ -499,7 +519,10 @@ class SimulationEngine:
                 )
 
             if agent.health <= 0:
-                cause = "thirst" if agent.thirst >= 100 else "starvation"
+                if getattr(agent, '_combat_attacker_id', None):
+                    cause = "violence"
+                else:
+                    cause = "thirst" if agent.thirst >= 100 else "starvation"
                 dead_agents.append((agent, cause))
                 continue
 
@@ -507,6 +530,9 @@ class SimulationEngine:
             if agent.age >= agent.max_age:
                 dead_agents.append((agent, "old_age"))
                 continue
+
+            # Update tracked health for interruption detection
+            self._agent_health[agent.id] = agent.health
 
         for agent, cause in dead_agents:
             self.colony_stats_collector.record_death()
@@ -544,17 +570,39 @@ class SimulationEngine:
                         # No adopter — accelerate decay
                         child.health -= 2.0
 
-            death_event = create_death_event(agent, tick, cause=cause)
-            self.event_queue.push(
-                death_event.type,
-                death_event.description,
-                death_event.severity,
-                death_event.agent_ids,
-                tick,
-                metadata=death_event.metadata,
-            )
+            if cause == "violence":
+                attacker_id = getattr(agent, '_combat_attacker_id', None)
+                # Update relationships
+                if attacker_id:
+                    attacker = next((a for a in self.agents if a.id == attacker_id), None)
+                    if attacker:
+                        self._update_relationship(attacker, agent, tick, score_delta=-0.5)
+                # Clear guarding and equipment flags
+                agent.is_guarding = False
+                agent.equipment = {"weapon": "fist", "armor": "none", "tool": "none"}
+                # Emit combat_death event
+                self.event_queue.push(
+                    "combat_death",
+                    f"{agent.name} was killed",
+                    "critical",
+                    [agent.id],
+                    tick,
+                    metadata={"cause": "violence", "attacker_id": attacker_id, "target_id": agent.id},
+                )
+            else:
+                death_event = create_death_event(agent, tick, cause=cause)
+                self.event_queue.push(
+                    death_event.type,
+                    death_event.description,
+                    death_event.severity,
+                    death_event.agent_ids,
+                    tick,
+                    metadata=death_event.metadata,
+                )
             self.agents.remove(agent)
-            del self.fsms[agent.id]
+            if agent.id in self.fsms:
+                del self.fsms[agent.id]
+            self._agent_health.pop(agent.id, None)
             self.builder.mark_agent_removed(agent.id)
             logger.warning(f"{agent.name} died at tick {tick}")
 
@@ -565,6 +613,13 @@ class SimulationEngine:
     def _run_agent_fsm(self, agent: Agent, tick: int) -> None:
         """Execute one tick of the agent's FSM."""
         fsm = self.fsms[agent.id]
+
+        # Combat interruption: if health dropped, force re-evaluation
+        prev_health = self._agent_health.get(agent.id, agent.health)
+        if agent.health < prev_health:
+            if fsm.current_state == "executing":
+                fsm.transition_to("evaluate")
+            agent.is_guarding = False
 
         # Keep agent.fsm_state in sync for snapshot building
         agent.fsm_state = fsm.current_state
@@ -674,72 +729,117 @@ class SimulationEngine:
                  "Lia", "Nia", "Tia", "Mya", "Rya", "Ena", "Ula", "Ora", "Ada", "Iva"]
         return random.choice(names)
 
-    def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
-        """Check needs and decide next state.
-        
-        Priority order:
-        0. Feed child if caregiver and child is critical
-        1. Eat from inventory if hungry
-        2. Drink if thirsty and at water
-        3. Gather food if hungry and at food source
-        4. Rest if energy is low
-        5. Move toward food/water if critical
-        6. Reproduce if conditions met (lax thresholds)
-        7. LLM for higher-level planning
+    def _try_role_action(
+        self,
+        agent: Agent,
+        fsm: FSM,
+        action_name: str,
+        food_nearby: list,
+        water_nearby: list,
+    ) -> bool:
+        """Attempt to execute a role-priority action if conditions are met.
+
+        Returns *True* if the action was triggered.
         """
-        nearby = self.world.get_nearby_resources(agent.position, radius=8)
-        food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
-        water_nearby = [r for r in nearby if r[2] == "water"]
-
-        # ── 0. Feed child if caregiver and child is critical ──
-        if not agent.is_child and agent.inventory.get("berries", 0) > 0:
-            for child in self.agents:
-                if child.is_child and child.parent_id == agent.id:
-                    dist = math.hypot(
-                        agent.position[0] - child.position[0],
-                        agent.position[1] - child.position[1],
-                    )
-                    if dist <= INTERACTION_RADIUS:
-                        if child.hunger > 70:
-                            agent.current_action = "feed_child"
-                            agent.current_action_emoji = "🍼"
-                            agent.action_duration = get_action_duration(ActionType.FEED_CHILD, agent)
+        if action_name == "eat":
+            if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
+                agent.current_action = "eat"
+                agent.current_action_emoji = "🍎"
+                agent.action_duration = 3
+                agent.action_progress = 0.0
+                fsm.transition_to("executing")
+                return True
+        elif action_name == "drink":
+            if agent.thirst > CRITICAL_THIRST:
+                for r in water_nearby:
+                    if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
+                        agent.current_action = "drink"
+                        agent.current_action_emoji = "💧"
+                        agent.action_duration = 3
+                        agent.action_progress = 0.0
+                        fsm.transition_to("executing")
+                        return True
+        elif action_name == "gather":
+            if agent.hunger > CRITICAL_HUNGER:
+                for r in food_nearby:
+                    if abs(r[0] - agent.position[0]) <= 1 and abs(r[1] - agent.position[1]) <= 1:
+                        agent.current_action = "gather"
+                        agent.current_action_emoji = "🫐"
+                        agent.action_duration = 3
+                        agent.action_progress = 0.0
+                        fsm.transition_to("executing")
+                        return True
+        elif action_name == "rest":
+            if agent.energy < 30:
+                agent.current_action = "rest"
+                agent.current_action_emoji = "💤"
+                agent.action_duration = get_action_duration(ActionType.REST, agent)
+                agent.action_progress = 0.0
+                fsm.transition_to("executing")
+                return True
+        elif action_name == "explore":
+            for y in range(self.world.height):
+                for x in range(self.world.width):
+                    if (x, y) not in agent.explored_tiles:
+                        agent.current_action = "explore"
+                        agent.current_action_emoji = "🧭"
+                        agent.action_duration = get_action_duration(ActionType.EXPLORE, agent)
+                        agent.action_progress = 0.0
+                        fsm.transition_to("executing")
+                        return True
+        elif action_name == "mine":
+            cx, cy = int(agent.position[0]), int(agent.position[1])
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    nx, ny = cx + dx, cy + dy
+                    if 0 <= nx < self.world.width and 0 <= ny < self.world.height:
+                        tile = self.world.get_tile(nx, ny)
+                        if tile.resource_type in ("stone", "iron_ore") and tile.amount > 0:
+                            agent.current_action = "mine"
+                            agent.current_action_emoji = "⛏️"
+                            agent.action_duration = get_action_duration(ActionType.MINE, agent)
                             agent.action_progress = 0.0
-                            # Store child id in active plan step so handler can find it
-                            agent.active_plan = {
-                                "steps": [{"action": "feed_child", "target": None, "child_id": child.id}]
-                            }
-                            agent.plan_step_index = 0
                             fsm.transition_to("executing")
-                            return
-                        elif child.thirst > 70:
-                            # Child is thirsty — seek water to give drink
-                            nearby = self.world.get_nearby_resources(agent.position, radius=8)
-                            water_nearby = [r for r in nearby if r[2] == "water"]
-                            if water_nearby:
-                                target = (water_nearby[0][0], water_nearby[0][1])
-                                agent.current_action = "seeking water"
-                                agent.current_action_emoji = "🍼"
-                                agent.target_position = (float(target[0]), float(target[1]))
-                                agent.move_path = self.world.find_path(
-                                    (int(agent.position[0]), int(agent.position[1])), target
-                                )
-                                agent.move_progress = 0.0
-                                fsm.transition_to("moving")
-                                return
-                    else:
-                        # Move toward child
-                        target = (int(child.position[0]), int(child.position[1]))
-                        agent.current_action = "seeking child"
-                        agent.current_action_emoji = "🍼"
-                        agent.target_position = (float(target[0]), float(target[1]))
-                        agent.move_path = self.world.find_path(
-                            (int(agent.position[0]), int(agent.position[1])), target
-                        )
-                        agent.move_progress = 0.0
-                        fsm.transition_to("moving")
-                        return
+                            return True
+        elif action_name == "attack":
+            for other in self.agents:
+                if other.id != agent.id:
+                    dist = math.hypot(
+                        agent.position[0] - other.position[0],
+                        agent.position[1] - other.position[1],
+                    )
+                    if dist <= 5:
+                        agent.current_action = "attack"
+                        agent.current_action_emoji = "⚔️"
+                        agent.action_duration = 3
+                        agent.action_progress = 0.0
+                        fsm.transition_to("executing")
+                        return True
+        elif action_name == "build":
+            cx, cy = int(agent.position[0]), int(agent.position[1])
+            from app.simulation.structures import STRUCTURE_COSTS
+            for structure_type, costs in STRUCTURE_COSTS.items():
+                if all(agent.inventory.get(res, 0) >= qty for res, qty in costs.items()):
+                    tile = self.world.get_tile(cx, cy)
+                    if tile.resource_type is None and not tile.blocked and self.world.structures.get_structure_at((cx, cy)) is None:
+                        agent.current_action = "build"
+                        agent.current_action_emoji = "🔧"
+                        agent.action_duration = get_action_duration(ActionType.BUILD, agent)
+                        agent.action_progress = 0.0
+                        fsm.transition_to("executing")
+                        return True
+            return False
+        return False
 
+    def _run_survival_chain(
+        self,
+        agent: Agent,
+        fsm: FSM,
+        tick: int,
+        food_nearby: list,
+        water_nearby: list,
+    ) -> None:
+        """Original hardcoded survival evaluation (items 1‑7)."""
         # ── 1. Eat from inventory if hungry ──
         if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
             agent.current_action = "eat"
@@ -807,12 +907,10 @@ class SimulationEngine:
 
         # ── 6. Reproduce (lax thresholds — civilization first!) ──
         if len(self.agents) >= MAX_POPULATION:
-            # Skip reproduction, population is high enough
             pass  # fall through to LLM trigger
         elif (agent.energy > 30 and agent.hunger < 70 and agent.thirst < 70):
             last_repro = getattr(agent, '_last_reproduction_tick', -999)
             if tick - last_repro < REPRODUCTION_COOLDOWN:
-                # Skip reproduction, go to LLM
                 pass  # fall through to LLM trigger
             else:
                 partner = self._find_reproduction_partner(agent)
@@ -841,7 +939,22 @@ class SimulationEngine:
         if not agent.active_plan and not agent.llm_call_pending:
             fsm.transition_to("llm_trigger")
         elif agent.active_plan:
-            # Continue with existing plan
+            # Continue with existing plan — skip steps disallowed by role
+            while agent.plan_step_index < len(agent.active_plan["steps"]):
+                step = agent.active_plan["steps"][agent.plan_step_index]
+                action_type = ActionType(step["action"])
+                if roles_module.role_allows_action(agent.role, action_type):
+                    break
+                agent.plan_step_index += 1
+            else:
+                # All remaining steps disallowed — clear plan and idle
+                agent.active_plan = None
+                agent.plan_step_index = 0
+                agent.current_action = "idle"
+                agent.current_action_emoji = "💤"
+                fsm.transition_to("idle")
+                return
+
             step = agent.active_plan["steps"][agent.plan_step_index]
             action_type = ActionType(step["action"])
             agent.current_action = step["action"]
@@ -869,6 +982,75 @@ class SimulationEngine:
             agent.current_action = "idle"
             agent.current_action_emoji = "💤"
             fsm.transition_to("idle")
+
+    def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
+        """Check needs and decide next state.
+
+        New flow:
+        0. Feed child if caregiver and child is critical
+        1. Check role priorities (highest score first)
+        2. Fallback to hardcoded survival chain
+        3. LLM for higher-level planning
+        """
+        nearby = self.world.get_nearby_resources(agent.position, radius=8)
+        food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
+        water_nearby = [r for r in nearby if r[2] == "water"]
+
+        # ── 0. Feed child if caregiver and child is critical ──
+        if not agent.is_child and agent.inventory.get("berries", 0) > 0:
+            for child in self.agents:
+                if child.is_child and child.parent_id == agent.id:
+                    dist = math.hypot(
+                        agent.position[0] - child.position[0],
+                        agent.position[1] - child.position[1],
+                    )
+                    if dist <= INTERACTION_RADIUS:
+                        if child.hunger > 70:
+                            agent.current_action = "feed_child"
+                            agent.current_action_emoji = "🍼"
+                            agent.action_duration = get_action_duration(ActionType.FEED_CHILD, agent)
+                            agent.action_progress = 0.0
+                            agent.active_plan = {
+                                "steps": [{"action": "feed_child", "target": None, "child_id": child.id}]
+                            }
+                            agent.plan_step_index = 0
+                            fsm.transition_to("executing")
+                            return
+                        elif child.thirst > 70:
+                            nearby = self.world.get_nearby_resources(agent.position, radius=8)
+                            water_nearby = [r for r in nearby if r[2] == "water"]
+                            if water_nearby:
+                                target = (water_nearby[0][0], water_nearby[0][1])
+                                agent.current_action = "seeking water"
+                                agent.current_action_emoji = "🍼"
+                                agent.target_position = (float(target[0]), float(target[1]))
+                                agent.move_path = self.world.find_path(
+                                    (int(agent.position[0]), int(agent.position[1])), target
+                                )
+                                agent.move_progress = 0.0
+                                fsm.transition_to("moving")
+                                return
+                    else:
+                        target = (int(child.position[0]), int(child.position[1]))
+                        agent.current_action = "seeking child"
+                        agent.current_action_emoji = "🍼"
+                        agent.target_position = (float(target[0]), float(target[1]))
+                        agent.move_path = self.world.find_path(
+                            (int(agent.position[0]), int(agent.position[1])), target
+                        )
+                        agent.move_progress = 0.0
+                        fsm.transition_to("moving")
+                        return
+
+        # ── 1. Role priorities ──
+        role_config = roles_module.get_role_config(agent.role)
+        priorities = sorted(role_config.get("priorities", []), key=lambda x: x[1], reverse=True)
+        for action_name, _score in priorities:
+            if self._try_role_action(agent, fsm, action_name, food_nearby, water_nearby):
+                return
+
+        # ── 2. Hardcoded survival chain ──
+        self._run_survival_chain(agent, fsm, tick, food_nearby, water_nearby)
 
     def _is_tile_occupied(self, x: int, y: int, exclude_id: str | None = None) -> bool:
         """Check if a tile is occupied by another agent."""
@@ -974,11 +1156,17 @@ class SimulationEngine:
                 step = None
                 if agent.active_plan and action_type in (ActionType.TRADE, ActionType.FEED_CHILD):
                     step = agent.active_plan["steps"][agent.plan_step_index]
-                if action_type == ActionType.FEED_CHILD:
+                if action_type in (ActionType.FEED_CHILD, ActionType.ATTACK):
                     result = handler(agent, self.world, target, step, self.agents)
                 else:
                     result = handler(agent, self.world, target, step)
                 agent.last_action_result = result
+
+                # Mark new structures as dirty for snapshot delta
+                if action_type == ActionType.BUILD and result.success:
+                    structure_id = result.state_changes.get("structure_id")
+                    if structure_id:
+                        self.builder.mark_structure_dirty(structure_id)
 
                 # F5: enqueue trade proposal in target's conversation queue
                 if action_type == ActionType.TRADE and result.success and step:
@@ -1037,6 +1225,9 @@ class SimulationEngine:
                 fsm.transition_to("evaluate")
             else:
                 fsm.transition_to("evaluate")
+
+        # Update tracked health after potential combat resolution
+        self._agent_health[agent.id] = agent.health
 
     def _fsm_llm_trigger(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Queue an async LLM call."""

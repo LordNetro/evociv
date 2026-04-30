@@ -7,7 +7,7 @@ import time
 from app.simulation.world import World
 from app.simulation.agent import Agent
 from app.simulation.event_queue import SimEvent as EngineEvent
-from app.models.schemas import WorldSnapshot, TileUpdate, AgentState, SimulationMetrics, SimEvent as SchemaEvent
+from app.models.schemas import WorldSnapshot, TileUpdate, AgentState, SimulationMetrics, SimEvent as SchemaEvent, StructureUpdate
 
 
 class WorldSnapshotBuilder:
@@ -19,6 +19,7 @@ class WorldSnapshotBuilder:
         self._dirty_agents: set[str] = set()    # agent IDs changed since last snapshot
         self._removed_agents: list[str] = []     # agent IDs removed since last snapshot
         self._discovered_set: set[tuple[str, int, int]] = set()  # for resource discovery tracking
+        self._dirty_structures: set[str] = set()  # structure IDs changed since last snapshot
 
     def mark_agent_dirty(self, agent_id: str) -> None:
         """Mark an agent as having changed state."""
@@ -28,6 +29,10 @@ class WorldSnapshotBuilder:
         """Mark an agent as removed (died)."""
         self._removed_agents.append(agent_id)
         self._dirty_agents.discard(agent_id)
+
+    def mark_structure_dirty(self, structure_id: str) -> None:
+        """Mark a structure as having changed state."""
+        self._dirty_structures.add(structure_id)
 
     def _build_agent_state(self, agent: Agent) -> AgentState:
         """Convert an Agent dataclass to a Pydantic AgentState."""
@@ -69,6 +74,7 @@ class WorldSnapshotBuilder:
             faction_id=agent.faction_id,
             current_dialogue=agent.current_dialogue,
             dialogue_type=agent.dialogue_type,
+            equipment=dict(agent.equipment),
         )
 
     def _compute_metrics(self) -> SimulationMetrics:
@@ -96,6 +102,25 @@ class WorldSnapshotBuilder:
             )
             for e in engine_events
         ]
+
+    def _build_structure_update(self, structure) -> StructureUpdate:
+        """Convert a Structure dataclass to a Pydantic StructureUpdate."""
+        return StructureUpdate(
+            id=structure.id,
+            structure_type=structure.structure_type,
+            position=structure.position,
+            health=round(structure.health, 1),
+            max_health=round(structure.max_health, 1),
+            owner_id=structure.owner_id,
+        )
+
+    def _build_structures_list(self, structure_ids: set[str] | None = None) -> list[StructureUpdate]:
+        """Build a list of StructureUpdate objects."""
+        structures = []
+        for s in self.world.structures.list_all():
+            if structure_ids is None or s.id in structure_ids:
+                structures.append(self._build_structure_update(s))
+        return structures
 
     def build(
         self, tick: int, events: list[EngineEvent] | None = None, faction_manager=None, colony_stats=None
@@ -147,6 +172,7 @@ class WorldSnapshotBuilder:
             events=self._convert_events(events or []),
             factions=factions,
             colony_stats=colony_stats,
+            structures=self._build_structures_list(),
         )
 
     def build_delta(
@@ -158,6 +184,7 @@ class WorldSnapshotBuilder:
         - Agents: ALL agents (state changes every tick anyway)
         - Removed agents: only newly removed
         - Events: only events from this tick
+        - Structures: only dirty structures
         """
         # Dirty tiles
         tiles = []
@@ -192,6 +219,10 @@ class WorldSnapshotBuilder:
                 for f in faction_manager.list_all()
             ]
 
+        # Dirty structures
+        dirty_structures = self._build_structures_list(self._dirty_structures)
+        self._dirty_structures.clear()
+
         return WorldSnapshot(
             tick=tick,
             timestamp=time.time(),
@@ -202,6 +233,7 @@ class WorldSnapshotBuilder:
             events=self._convert_events(events or []),
             factions=factions,
             colony_stats=colony_stats,
+            structures=dirty_structures,
         )
 
 

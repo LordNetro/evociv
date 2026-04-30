@@ -13,6 +13,10 @@ from app.simulation.snapshot import WorldSnapshotBuilder
 from app.simulation.conversation import Message, ConversationManager
 from app.simulation.faction import Faction, FactionSummary, FactionManager
 from app.simulation.colony import ColonyStats, ColonyStatsCollector
+from app.simulation import roles
+from app.simulation import crafting
+from app.simulation import structures
+from app.simulation import combat
 
 __all__ = [
     "Agent",
@@ -33,4 +37,8 @@ __all__ = [
     "FactionManager",
     "ColonyStats",
     "ColonyStatsCollector",
+    "roles",
+    "crafting",
+    "structures",
+    "combat",
 ]

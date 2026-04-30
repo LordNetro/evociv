@@ -1,9 +1,8 @@
 """Tests for the crafting system."""
 
-import pytest
 
 from app.simulation.agent import Agent
-from app.simulation.crafting import CraftingManager, RECIPES, Recipe
+from app.simulation.crafting import CraftingManager, RECIPES
 from app.simulation.world import World
 
 

@@ -1,6 +1,5 @@
 """Tests for role configuration and helpers."""
 
-import pytest
 
 from app.simulation.agent import Agent
 from app.simulation.actions import ActionType

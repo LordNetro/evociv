@@ -4,7 +4,7 @@ import asyncio
 import pytest
 
 from app.simulation.world import World
-from app.simulation.agent import Agent, AgentFactory, FSM, MockLLMOrchestrator
+from app.simulation.agent import Agent, AgentFactory, FSM
 from app.simulation.actions import ActionType, REGISTRY, get_action_duration
 from app.simulation.event_queue import EventQueue, check_proximity_encounters
 from app.simulation.snapshot import WorldSnapshotBuilder
@@ -163,7 +163,6 @@ class TestWorld:
     def test_hunting_depletes_animal_amount(self):
         """Hunting an animal tile reduces its amount."""
         world = World(width=50, height=50, seed=42)
-        agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0))
         # Place a deer tile adjacent to the agent
         world.get_tile(5, 5).resource_type = "deer"
         world.get_tile(5, 5).amount = 3
@@ -200,7 +199,7 @@ class TestWorld:
 
     def test_wall_blocks_is_passable(self):
         """A wall structure makes its tile impassable."""
-        from app.simulation.structures import Structure, StructureManager
+        from app.simulation.structures import Structure
         world = World(width=10, height=10)
         wall = Structure(id="w1", structure_type="wall", position=(3, 3))
         world.structures.add_structure(wall)

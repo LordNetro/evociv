@@ -1,6 +1,5 @@
 """Tests for the structure system."""
 
-import pytest
 
 from app.simulation.structures import (
     Structure,

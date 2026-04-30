@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
@@ -322,7 +321,7 @@ def handle_gather(
                 return ActionResult(
                     success=False,
                     action_type=ActionType.GATHER,
-                    action_summary=f"gather_failed: inventory full",
+                    action_summary="gather_failed: inventory full",
                     events=[{"type": "gather_failed", "reason": "inventory full"}],
                 )
             tile.amount = max(0, tile.amount - 1)

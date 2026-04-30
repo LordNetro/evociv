@@ -1,6 +1,5 @@
 """Tests for the combat system."""
 
-import pytest
 
 from app.simulation.combat import CombatManager
 

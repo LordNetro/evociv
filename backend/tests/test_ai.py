@@ -378,7 +378,6 @@ class TestRealLLMOrchestrator:
         agent = Agent(id="test_001", name="Tester", position=(5.0, 5.0), faction_id="faction_a")
         enemy = Agent(id="test_002", name="Enemy", position=(6.0, 6.0), faction_id="faction_b")
         agents = [agent, enemy]
-        engine = None  # We only need the orchestrator and agents list for this test
         prompt = orchestrator.build_prompt(agent, world=world, agents=agents)
         assert "NEARBY HOSTILES:" in prompt
         assert "Enemy" in prompt

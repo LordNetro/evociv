@@ -7,26 +7,24 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
 
+from app.core.definitions import DEFINITIONS
 from app.simulation.agent import Agent
+from app.simulation.skills import SkillManager
+from app.simulation.status_effects import StatusEffectManager
+from app.simulation.emotions import EmotionManager
 from app.simulation.world import World
 
 
 # ---------------------------------------------------------------------------
 # Tool modifiers (maps item name → its passive modifiers)
+# Derived from DEFINITIONS.recipes at import time.
 # ---------------------------------------------------------------------------
 
-ITEM_MODIFIERS: dict[str, dict[str, Any]] = {
-    "stone_axe": {"chop_speed": 2, "attack_damage": 5},
-    "stone_pickaxe": {"mine_speed": 2},
-    "spear": {"attack_damage": 15, "hunt_bonus": 2},
-    "fishing_rod": {"fish_bonus": 2},
-    "bow": {"attack_damage": 12, "ranged": True},
-    "fiber_armor": {"damage_reduction": 0.3},
-    "hoe": {"farm_speed": 2},
-    "iron_sword": {"attack_damage": 25},
-    "iron_axe": {"chop_speed": 4},
-    "hide_armor": {"damage_reduction": 0.5},
-}
+ITEM_MODIFIERS: dict[str, dict[str, Any]] = {}
+for _recipe in DEFINITIONS.recipes.values():
+    if _recipe.modifiers:
+        for _output_name in _recipe.output:
+            ITEM_MODIFIERS[_output_name] = dict(_recipe.modifiers)
 
 
 class ActionType(str, Enum):
@@ -66,11 +64,12 @@ ActionHandler = Callable[..., ActionResult]
 
 
 # Duration multipliers when a specific tool is used for an action
+# Derived from DEFINITIONS.actions at import time.
 TOOL_DURATION_MULTIPLIERS: dict[tuple[str, ActionType], float] = {}
-
-
-def _register_tool_multiplier(item: str, action: ActionType, multiplier: float) -> None:
-    TOOL_DURATION_MULTIPLIERS[(item, action)] = multiplier
+for _action_name, _action_def in DEFINITIONS.actions.items():
+    _action_type = ActionType(_action_name)
+    for _mult_entry in _action_def.tool_multipliers:
+        TOOL_DURATION_MULTIPLIERS[(_mult_entry["item"], _action_type)] = _mult_entry["multiplier"]
 
 
 def get_item_modifiers(agent: Agent) -> dict[str, Any]:
@@ -289,6 +288,13 @@ def handle_eat(
             if tile.resource_type == "berries" and tile.subtype:
                 agent.knowledge[tile.subtype] = dict(tile.hidden_properties)
                 knowledge_learned = f", learned: {tile.subtype} is {tile.hidden_properties}"
+                break
+
+        # Apply poisoned status effect if berries are poisonous
+        for x, y, tile in _tiles_on_or_adjacent(agent, world):
+            if tile.resource_type == "berries" and tile.subtype:
+                if tile.hidden_properties.get("is_poisonous"):
+                    StatusEffectManager.apply(agent, "poisoned", source="food")
                 break
 
         return ActionResult(
@@ -818,9 +824,9 @@ def handle_attack(
 
     weapon_damage = weapon_stats.get("damage", 5)
     if is_ranged:
-        damage = CombatManager.calculate_ranged_damage(agent.intelligence, weapon_damage, armor_reduction)
+        damage = CombatManager.calculate_ranged_damage_with_effects(agent, weapon_damage, armor_reduction)
     else:
-        damage = CombatManager.calculate_melee_damage(agent.strength, weapon_damage, armor_reduction)
+        damage = CombatManager.calculate_melee_damage_with_effects(agent, weapon_damage, armor_reduction)
 
     damage = CombatManager.calculate_damage_with_guard(damage, target_agent.is_guarding)
     target_agent.health = max(0.0, target_agent.health - damage)
@@ -1025,6 +1031,26 @@ REGISTRY: dict[ActionType, ActionHandler] = {
 }
 
 
+def _action_to_skill(action_type: ActionType) -> str | None:
+    """Map an action type to its primary skill name. Returns None if unknown."""
+    mapping = {
+        ActionType.CHOP: "carpentry",
+        ActionType.BUILD: "carpentry",
+        ActionType.ATTACK: "combat",
+        ActionType.HUNT: "survival",
+        ActionType.FISH: "survival",
+        ActionType.GATHER: "survival",
+        ActionType.CRAFT: "crafting",
+        ActionType.SOCIALIZE: "social",
+        ActionType.TRADE: "social",
+        ActionType.EXPLORE: "exploration",
+        ActionType.MOVE: "exploration",
+        ActionType.MINE: "mining",
+        ActionType.FARM: "farming",
+    }
+    return mapping.get(action_type)
+
+
 def get_action_duration(action_type: ActionType, agent: Agent, world: World = None) -> int:
     """Return duration in ticks for an action based on agent attributes."""
     durations = {
@@ -1052,38 +1078,32 @@ def get_action_duration(action_type: ActionType, agent: Agent, world: World = No
     base = durations[action_type]
     # Apply tool modifiers for actions that support them
     if action_type in (ActionType.CHOP, ActionType.MINE):
-        return apply_tool_modifier(agent, action_type, base)
-    return base
+        base = apply_tool_modifier(agent, action_type, base)
 
+    # Apply skill and effect speed modifiers
+    skill_name = _action_to_skill(action_type)
+    skill_mod = SkillManager.get_speed_modifier(agent, skill_name) if skill_name else 1.0
+    effect_mod = StatusEffectManager.get_total_modifiers(agent).get("speed_multiplier", 1.0)
+    emotion_mod = EmotionManager.get_total_modifiers(agent).get("speed_multiplier", 1.0)
 
-# Register tool speed multipliers
-_register_tool_multiplier("stone_axe", ActionType.CHOP, 0.75)
-_register_tool_multiplier("iron_axe", ActionType.CHOP, 0.5)
-_register_tool_multiplier("stone_pickaxe", ActionType.MINE, 0.75)
-_register_tool_multiplier("hoe", ActionType.FARM, 0.5)
+    # Weather modifier: compose from World's WeatherSystem if available
+    weather_mod = 1.0
+    if world is not None and hasattr(world, 'weather'):
+        w_def = world.weather._get_current_def()
+        if w_def and w_def.effects:
+            # Get weather speed effect with shelter protection
+            w_effects = world.weather.get_effects_for_agent(
+                agent,
+                shelter_mult=world.weather._get_agent_shelter(agent, world),
+            )
+            weather_mod = w_effects.get("speed_multiplier", 1.0)
+
+    return max(1, round(base * skill_mod * effect_mod * emotion_mod * weather_mod))
 
 
 ACTION_EMOJIS: dict[ActionType, str] = {
-    ActionType.MOVE: "🚶",
-    ActionType.CHOP: "🪓",
-    ActionType.DRINK: "💧",
-    ActionType.EAT: "🍎",
-    ActionType.GATHER: "🫐",
-    ActionType.REST: "💤",
-    ActionType.REPRODUCE: "❤️",
-    ActionType.TRADE: "🤝",
-    ActionType.SOCIALIZE: "💬",
-    ActionType.FEED_CHILD: "🍼",
-    ActionType.MINE: "⛏️",
-    ActionType.EXPLORE: "🧭",
-    ActionType.CRAFT: "🔨",
-    ActionType.HUNT: "🏹",
-    ActionType.FISH: "🎣",
-    ActionType.ATTACK: "⚔️",
-    ActionType.GUARD: "🛡️",
-    ActionType.HEAL: "❤️‍🩹",
-    ActionType.BUILD: "🔧",
-    ActionType.FARM: "🌾",
+    ActionType(name): action_def.emoji
+    for name, action_def in DEFINITIONS.actions.items()
 }
 
 

@@ -26,7 +26,7 @@ Define combat mechanics: damage formulas, weapons, armor, the ATTACK and GUARD a
 | R7 | The Agent dataclass MUST gain `equipment` field: `dict[str, str]` mapping slot names to item IDs. Valid slots: `weapon`, `armor`, `tool`. Default: `{"weapon": "fist", "armor": "none", "tool": "none"}`. | MUST |
 | R8 | When an agent takes damage (health reduction), the agent's FSM MUST be interrupted if currently in `idle`, `moving`, or `executing` states. The interrupted agent transitions to `evaluate` and if a hostile target is within range, MAY retaliate via LLM or instinct. | MUST |
 | R9 | When `agent.health <= 0` from combat damage, the agent MUST die with `cause="combat"`. The death event MUST be `type="combat_death"` with a description including the attacker's name. | MUST |
-| R10 | Combat events MUST be logged as SimEvents: `type="combat"` for attacks (with damage dealt, attacker, target) and `type="combat_death"` for deaths. | MUST |
+| R10 | Combat events MUST be logged as SimEvents: `type="combat"` for attacks (with damage dealt, attacker, target) and `type="combat_death"` for deaths. Additionally, combat outcomes MUST trigger emotion events: `combat_win` triggers `proud`; `combat_loss` triggers `fearful` and `sad`. | MUST |
 | R11 | The GUARD status MUST be tracked as a temporary flag on the agent: `is_guarding: bool` (default False). When `is_guarding=True`, all incoming damage is multiplied by 0.5 (rounded up, minimum 1). The flag clears when the guard action duration expires or the agent moves. | MUST |
 | R12 | An agent MUST NOT attack itself. The ATTACK handler MUST check `target_id != agent.id` and return `success=False` if they match. | MUST |
 | R13 | Weapons and armor items are craftable via the crafting system (see crafting-system/spec.md). Fist is the default unarmed weapon and requires no item. | MUST |
@@ -89,3 +89,13 @@ Define combat mechanics: damage formulas, weapons, armor, the ATTACK and GUARD a
 - GIVEN a newly created agent with no equipment specified
 - WHEN the agent is initialized
 - THEN `agent.equipment` is `{"weapon": "fist", "armor": "none", "tool": "none"}`
+
+### Scenario: Combat win triggers proud
+- GIVEN an attacker that defeats a target (target.health ≤ 0)
+- WHEN the combat death event is processed
+- THEN `EmotionManager.apply_trigger(attacker, "on_win_combat")` is called
+
+### Scenario: Combat loss triggers fearful and sad
+- GIVEN an agent that was defeated in combat (took fatal damage)
+- WHEN the death event is processed for the loser
+- THEN `EmotionManager.apply_trigger(loser, "on_lose_combat")` is called before the agent is removed

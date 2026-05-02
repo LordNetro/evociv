@@ -1,0 +1,58 @@
+# Agent defaults definition file.
+# Mirrors agent.py AgentFactory.create_default_agents().
+
+agent_defaults:
+  agents:
+    - id: agent_001
+      name: Zog
+      position:
+        - 5.0
+        - 5.0
+      role: gatherer
+      strength: 60
+      intelligence: 40
+      sociability: 50
+      speed: 55
+      sex: male
+      age: 0
+      max_age: 3500
+      equipment:
+        weapon: fist
+        armor: none
+        tool: none
+
+    - id: agent_002
+      name: Mila
+      position:
+        - 35.0
+        - 30.0
+      role: builder
+      strength: 70
+      intelligence: 55
+      sociability: 40
+      speed: 35
+      sex: female
+      age: 0
+      max_age: 4000
+      equipment:
+        weapon: fist
+        armor: none
+        tool: none
+
+    - id: agent_003
+      name: Kael
+      position:
+        - 45.0
+        - 10.0
+      role: scout
+      strength: 45
+      intelligence: 60
+      sociability: 65
+      speed: 80
+      sex: male
+      age: 0
+      max_age: 3000
+      equipment:
+        weapon: fist
+        armor: none
+        tool: none

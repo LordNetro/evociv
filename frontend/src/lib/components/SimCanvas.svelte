@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { T } from '@threlte/core';
+	import * as THREE from 'three';
 	import Scene from '$lib/canvas3d/Scene.svelte';
 	import Grid3D from '$lib/canvas3d/Grid3D.svelte';
 	import Resources3D from '$lib/canvas3d/Resources3D.svelte';
@@ -59,6 +61,16 @@
 
 <div class="scene-wrapper">
 	<Scene>
+		<!-- Ground plane — a subtle natural floor beneath the grid -->
+		<T.Mesh position={[25, -0.05, 25]} rotation={[-Math.PI / 2, 0, 0]}>
+			<T.PlaneGeometry args={[60, 60]} />
+			<T.MeshStandardMaterial
+				color={new THREE.Color('#2d2d44')}
+				roughness={0.9}
+				metalness={0.0}
+			/>
+		</T.Mesh>
+
 		<Grid3D {tiles} />
 		<WaterPlane {waterTiles} />
 		<Resources3D resources={resourceTiles} onHarvest={handleHarvest} />

@@ -1,0 +1,15 @@
+# Armor definition file.
+# Mirrors combat.py ARMOR dict exactly.
+
+armor:
+  none:
+    name: none
+    damage_reduction: 0
+
+  fiber_armor:
+    name: fiber_armor
+    damage_reduction: 5
+
+  hide_armor:
+    name: hide_armor
+    damage_reduction: 10

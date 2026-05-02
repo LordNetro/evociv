@@ -121,13 +121,26 @@
 	{#if pos}
 		{@const factionColor = getFactionColor(agent.faction_id)}
 		<T.Group position={[pos.x + 0.5, 0.5, pos.y + 0.5]} scale={[scale, scale, scale]}>
+			<!-- Shadow/ground disc -->
+			<T.Mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
+				<T.CircleGeometry args={[0.3, 16]} />
+				<T.MeshStandardMaterial
+					color={new Color('#000000')}
+					transparent={true}
+					opacity={0.2}
+					side={2}
+					depthWrite={false}
+				/>
+			</T.Mesh>
+
 			{#if factionColor}
-				<T.Mesh rotation={[-Math.PI / 2, 0, 0]}>
+				<T.Mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.48, 0]}>
 					<T.RingGeometry args={[0.4, 0.45, 32]} />
-					<T.MeshStandardMaterial color={factionColor} side={2} />
+					<T.MeshStandardMaterial color={factionColor} side={2} transparent={true} opacity={0.6} />
 				</T.Mesh>
 			{/if}
 			<T.Mesh
+				castShadow={true}
 				oncreate={(ref) => {
 					const { addInteractiveObject, removeInteractiveObject } = useInteractivity();
 					const handler = () => handleClick(id);
@@ -137,7 +150,7 @@
 				userData={{ agentId: id }}
 				material={getMaterial(agent.role)}
 			>
-				<T.SphereGeometry args={[0.35]} />
+				<T.SphereGeometry args={[0.35, 16, 16]} />
 			</T.Mesh>
 		</T.Group>
 	{/if}

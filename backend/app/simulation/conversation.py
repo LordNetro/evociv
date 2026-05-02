@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from app.simulation.agent import Agent
 from app.simulation.event_queue import SimEvent
+from app.simulation.emotions import EmotionManager
 
 
 @dataclass
@@ -134,6 +135,9 @@ class ConversationManager:
                         ),
                     )
                 )
+                # Emotion trigger for social encounters
+                EmotionManager.apply_trigger(a1, "on_socialize", tick)
+                EmotionManager.apply_trigger(a2, "on_socialize", tick)
                 processed += 1
 
         return events

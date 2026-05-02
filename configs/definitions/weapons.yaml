@@ -1,0 +1,32 @@
+# Weapons definition file.
+# Mirrors combat.py WEAPONS dict exactly.
+
+weapons:
+  fist:
+    name: fist
+    damage: 5
+    type: melee
+    ranged: false
+    ammo: null
+
+  spear:
+    name: spear
+    damage: 15
+    type: melee
+    ranged: false
+    ammo: null
+
+  bow:
+    name: bow
+    damage: 12
+    type: ranged
+    ranged: true
+    ammo: arrows
+    max_range: 5
+
+  iron_sword:
+    name: iron_sword
+    damage: 25
+    type: melee
+    ranged: false
+    ammo: null

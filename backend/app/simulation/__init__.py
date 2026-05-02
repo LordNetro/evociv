@@ -1,6 +1,7 @@
 """Simulation package."""
 
 from app.simulation.agent import Agent, AgentFactory, FSM, MockLLMOrchestrator
+from app.simulation.map_memory import MapMemoryManager, TileMemory
 from app.simulation.event_queue import (
     EventQueue,
     SimEvent,
@@ -23,6 +24,8 @@ __all__ = [
     "AgentFactory",
     "FSM",
     "MockLLMOrchestrator",
+    "MapMemoryManager",
+    "TileMemory",
     "SimEvent",
     "EventQueue",
     "check_proximity_encounters",

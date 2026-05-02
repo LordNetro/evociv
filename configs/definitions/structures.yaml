@@ -1,0 +1,60 @@
+# Structures definition file.
+# Mirrors structures.py STRUCTURE_COSTS + STRUCTURE_DEFINITIONS merged.
+
+structures:
+  workbench:
+    name: workbench
+    costs:
+      wood: 10
+      stone: 5
+    health: 50
+    passable: true
+    shelter_protection: 0.3
+
+  storage_hut:
+    name: storage_hut
+    costs:
+      wood: 8
+      stone: 4
+      fiber: 2
+    health: 80
+    passable: true
+    shelter_protection: 0.5
+
+  house:
+    name: house
+    costs:
+      wood: 15
+      stone: 8
+      fiber: 5
+    health: 200
+    passable: true
+    shelter_protection: 1.0
+
+  forge:
+    name: forge
+    costs:
+      wood: 12
+      stone: 15
+      iron_ore: 5
+    health: 100
+    passable: true
+    shelter_protection: 0.0
+
+  wall:
+    name: wall
+    costs:
+      wood: 5
+      stone: 10
+    health: 300
+    passable: false
+    shelter_protection: 0.0
+
+  farm:
+    name: farm
+    costs:
+      wood: 5
+      fiber: 3
+    health: 30
+    passable: true
+    shelter_protection: 0.0

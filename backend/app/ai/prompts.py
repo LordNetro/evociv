@@ -3,6 +3,7 @@
 from typing import Any
 
 from app.simulation.agent import Agent, RelationshipData
+from app.simulation.emotions import EmotionManager
 
 ROLE_GUIDANCE: dict[str, str] = {
     "gatherer": "As a gatherer, your priority is collecting resources for the tribe. Gather berries, wood, fiber, and other materials.",
@@ -37,12 +38,18 @@ RULES:
 
 STATE_PROMPT_TEMPLATE = """CURRENT STATE:
 - Position: ({x:.0f}, {y:.0f})
+- Explored: {explored_count} tiles
 - Hunger: {hunger:.0f}/100 (0 = full, 100 = starving)
 - Thirst: {thirst:.0f}/100 (0 = hydrated, 100 = dehydrated)
 - Energy: {energy:.0f}/100
 - Health: {health:.0f}/100
+- Skills: {skills_line}
+- Status Effects: {effects_line}
+- Emotional State: {emotional_state}
 - Inventory: {inventory}
 - Current action: {action}
+- Weather: {weather}
+- Time: {time}
 
 EQUIPMENT:
 {equipment}
@@ -110,7 +117,7 @@ Use say_to to talk to another agent. If someone sent you a message (see SOCIAL C
 
 def _get_craftable_recipes(agent: Agent) -> str:
     """Return a formatted list of recipes the agent can craft with current inventory."""
-    from app.simulation.crafting import RECIPES
+    from app.core.definitions import DEFINITIONS
     from app.simulation.roles import role_allows_action
     from app.simulation.actions import ActionType
 
@@ -118,7 +125,7 @@ def _get_craftable_recipes(agent: Agent) -> str:
         return ""
 
     craftable: list[str] = []
-    for name, recipe in RECIPES.items():
+    for name, recipe in DEFINITIONS.recipes.items():
         if all(agent.inventory.get(item, 0) >= qty for item, qty in recipe.inputs.items()):
             craftable.append(
                 f"- {name} ({recipe.category}): {recipe.inputs} -> {recipe.output}"
@@ -140,6 +147,8 @@ def build_agent_prompt(
     equipment: str = "",
     nearby_hostiles: str = "",
     relationship_context: str = "",
+    weather: str = "(unknown)",
+    time_str: str = "(unknown)",
 ) -> str:
     """Build the full prompt for an agent LLM call."""
     personality = agent.__dict__.get("system_prompt", "") or (
@@ -207,6 +216,21 @@ def build_agent_prompt(
     # Format nearby structures
     structures_str = nearby_structures if nearby_structures else "(none)"
 
+    # Format skills line
+    if agent.skills:
+        skills_str = ", ".join(f"{name}:{level}" for name, level in sorted(agent.skills.items()))
+    else:
+        skills_str = "(none)"
+
+    # Format effects line
+    if agent.active_effects:
+        effects_str = ", ".join(
+            f"{name}({data['remaining_ticks']}t)"
+            for name, data in sorted(agent.active_effects.items())
+        )
+    else:
+        effects_str = "(none)"
+
     # Format craftable recipes
     recipes_str = craftable_recipes if craftable_recipes else "(none)"
 
@@ -219,13 +243,22 @@ def build_agent_prompt(
     # Format relationship context
     rel_str = relationship_context if relationship_context else "(none)"
 
+    emotional_state = EmotionManager.get_emotional_state_str(agent)
+
+    # Explored tiles count from agent's tile memory
+    explored_count = len(getattr(agent, "tile_memory", {}))
+
     state = STATE_PROMPT_TEMPLATE.format(
         x=agent.position[0],
         y=agent.position[1],
+        explored_count=explored_count,
         hunger=agent.hunger,
         thirst=agent.thirst,
         energy=agent.energy,
         health=agent.health,
+        skills_line=skills_str,
+        effects_line=effects_str,
+        emotional_state=emotional_state,
         inventory=agent.inventory or {},
         action=agent.current_action or "idle",
         equipment=equipment_str,
@@ -241,6 +274,8 @@ def build_agent_prompt(
         faction_context=faction_str,
         memories=memories,
         trigger=trigger,
+        weather=weather,
+        time=time_str,
     )
 
     return f"{system}\n\n{state}\n\n{JSON_FORMAT_INSTRUCTION}"

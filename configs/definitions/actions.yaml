@@ -1,0 +1,111 @@
+# Actions definition file.
+# Action metadata: emoji and tool_duration_multipliers from actions.py.
+
+actions:
+  move:
+    action_type: move
+    emoji: "\U0001f6b6"
+    tool_multipliers: []
+
+  chop:
+    action_type: chop
+    emoji: "\U0001fa93"
+    tool_multipliers:
+      - item: stone_axe
+        multiplier: 0.75
+      - item: iron_axe
+        multiplier: 0.5
+
+  drink:
+    action_type: drink
+    emoji: "\U0001f4a7"
+    tool_multipliers: []
+
+  eat:
+    action_type: eat
+    emoji: "\U0001f34e"
+    tool_multipliers: []
+
+  gather:
+    action_type: gather
+    emoji: "\U0001fad0"
+    tool_multipliers: []
+
+  rest:
+    action_type: rest
+    emoji: "\U0001f4a4"
+    tool_multipliers: []
+
+  reproduce:
+    action_type: reproduce
+    emoji: "\u2764\ufe0f"
+    tool_multipliers: []
+
+  trade:
+    action_type: trade
+    emoji: "\U0001f91d"
+    tool_multipliers: []
+
+  socialize:
+    action_type: socialize
+    emoji: "\U0001f4ac"
+    tool_multipliers: []
+
+  feed_child:
+    action_type: feed_child
+    emoji: "\U0001f37c"
+    tool_multipliers: []
+
+  mine:
+    action_type: mine
+    emoji: "\u26cf\ufe0f"
+    tool_multipliers:
+      - item: stone_pickaxe
+        multiplier: 0.75
+
+  explore:
+    action_type: explore
+    emoji: "\U0001f9ed"
+    tool_multipliers: []
+
+  craft:
+    action_type: craft
+    emoji: "\U0001f528"
+    tool_multipliers: []
+
+  hunt:
+    action_type: hunt
+    emoji: "\U0001f3f9"
+    tool_multipliers: []
+
+  fish:
+    action_type: fish
+    emoji: "\U0001f3a3"
+    tool_multipliers: []
+
+  attack:
+    action_type: attack
+    emoji: "\u2694\ufe0f"
+    tool_multipliers: []
+
+  guard:
+    action_type: guard
+    emoji: "\U0001f6e1\ufe0f"
+    tool_multipliers: []
+
+  heal:
+    action_type: heal
+    emoji: "\u2764\ufe0f\u200d\U0001fa79"
+    tool_multipliers: []
+
+  build:
+    action_type: build
+    emoji: "\U0001f527"
+    tool_multipliers: []
+
+  farm:
+    action_type: farm
+    emoji: "\U0001f33e"
+    tool_multipliers:
+      - item: hoe
+        multiplier: 0.5

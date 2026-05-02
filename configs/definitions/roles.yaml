@@ -1,0 +1,292 @@
+# Roles definition file.
+# Mirrors config/roles.py ROLES dict exactly.
+# Each role: name, description, priorities, allowed_actions, stat_modifiers, tool_allowlist, default_equipment.
+
+default_role: gatherer
+
+roles:
+  gatherer:
+    name: gatherer
+    description: Gathers resources from the environment
+    priorities: []
+    allowed_actions:
+      - move
+      - gather
+      - eat
+      - drink
+      - rest
+      - explore
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      speed: 5
+    tool_allowlist: []
+
+  hunter:
+    name: hunter
+    description: Hunts animals for food and materials
+    priorities:
+      - - hunt
+        - 80
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+      - - explore
+        - 30
+    allowed_actions:
+      - move
+      - hunt
+      - gather
+      - eat
+      - drink
+      - rest
+      - explore
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      strength: 10
+      speed: 5
+    tool_allowlist:
+      - spear
+
+  fisher:
+    name: fisher
+    description: Fishes from water sources
+    priorities:
+      - - fish
+        - 80
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+    allowed_actions:
+      - move
+      - fish
+      - gather
+      - eat
+      - drink
+      - rest
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      intelligence: 5
+    tool_allowlist:
+      - spear
+
+  farmer:
+    name: farmer
+    description: Farms for food and materials
+    priorities:
+      - - farm
+        - 80
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+    allowed_actions:
+      - move
+      - farm
+      - gather
+      - eat
+      - drink
+      - rest
+      - build
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      intelligence: 10
+    tool_allowlist: []
+
+  miner:
+    name: miner
+    description: Mines stone and ore
+    priorities:
+      - - mine
+        - 80
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+      - - explore
+        - 30
+    allowed_actions:
+      - move
+      - mine
+      - gather
+      - eat
+      - drink
+      - rest
+      - explore
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      strength: 10
+    tool_allowlist:
+      - pickaxe
+
+  builder:
+    name: builder
+    description: Builds structures for the colony
+    priorities:
+      - - build
+        - 80
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+    allowed_actions:
+      - move
+      - build
+      - gather
+      - eat
+      - drink
+      - rest
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      strength: 10
+    tool_allowlist: []
+
+  crafter:
+    name: crafter
+    description: Crafts items from raw materials
+    priorities:
+      - - craft
+        - 80
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+    allowed_actions:
+      - move
+      - craft
+      - gather
+      - eat
+      - drink
+      - rest
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      intelligence: 15
+    tool_allowlist: []
+
+  scout:
+    name: scout
+    description: Explores the world
+    priorities:
+      - - explore
+        - 90
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+    allowed_actions:
+      - move
+      - explore
+      - gather
+      - eat
+      - drink
+      - rest
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      speed: 15
+    tool_allowlist: []
+
+  fighter:
+    name: fighter
+    description: Fights enemies and guards the colony
+    priorities:
+      - - attack
+        - 80
+      - - guard
+        - 70
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+    allowed_actions:
+      - move
+      - attack
+      - guard
+      - gather
+      - eat
+      - drink
+      - rest
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      strength: 15
+      speed: 5
+    tool_allowlist: []
+
+  healer:
+    name: healer
+    description: Heals wounded agents
+    priorities:
+      - - heal
+        - 80
+      - - gather
+        - 60
+      - - eat
+        - 60
+      - - drink
+        - 60
+      - - rest
+        - 40
+    allowed_actions:
+      - move
+      - heal
+      - gather
+      - eat
+      - drink
+      - rest
+      - trade
+      - socialize
+      - feed_child
+    stat_modifiers:
+      intelligence: 10
+      sociability: 5
+    tool_allowlist: []

@@ -68,35 +68,35 @@ class TestRolesHelpers:
 
 class TestRolesConfig:
     def test_roles_has_all_ten_entries(self):
-        """ROLES dict contains all 10 expected roles."""
-        from config.roles import ROLES
+        """DEFINITIONS.roles contains all 10 expected roles."""
+        from app.core.definitions import DEFINITIONS
         expected = {
             "gatherer", "hunter", "fisher", "farmer", "miner",
             "builder", "crafter", "scout", "fighter", "healer",
         }
-        assert set(ROLES.keys()) == expected
+        assert set(DEFINITIONS.roles.keys()) == expected
 
     def test_default_role(self):
         """DEFAULT_ROLE is gatherer."""
-        from config.roles import DEFAULT_ROLE
-        assert DEFAULT_ROLE == "gatherer"
+        from app.core.definitions import DEFINITIONS
+        assert DEFINITIONS.default_role == "gatherer"
 
-    def test_each_role_has_required_keys(self):
-        """Every role config contains priorities, allowed_actions, stat_modifiers."""
-        from config.roles import ROLES
-        for role_name, config in ROLES.items():
-            assert "priorities" in config, f"{role_name} missing priorities"
-            assert "allowed_actions" in config, f"{role_name} missing allowed_actions"
-            assert "stat_modifiers" in config, f"{role_name} missing stat_modifiers"
-            assert isinstance(config["priorities"], list)
-            assert isinstance(config["allowed_actions"], list)
-            assert isinstance(config["stat_modifiers"], dict)
+    def test_each_role_has_required_attributes(self):
+        """Every role config has priorities, allowed_actions, stat_modifiers."""
+        from app.core.definitions import DEFINITIONS
+        for role_name, config in DEFINITIONS.roles.items():
+            assert hasattr(config, "priorities"), f"{role_name} missing priorities"
+            assert hasattr(config, "allowed_actions"), f"{role_name} missing allowed_actions"
+            assert hasattr(config, "stat_modifiers"), f"{role_name} missing stat_modifiers"
+            assert isinstance(config.priorities, list)
+            assert isinstance(config.allowed_actions, list)
+            assert isinstance(config.stat_modifiers, dict)
 
     def test_role_priorities_format(self):
         """Priorities are list of (action_name, score) tuples with score 0-100."""
-        from config.roles import ROLES
-        for role_name, config in ROLES.items():
-            for item in config["priorities"]:
+        from app.core.definitions import DEFINITIONS
+        for role_name, config in DEFINITIONS.roles.items():
+            for item in config.priorities:
                 assert isinstance(item, tuple) and len(item) == 2, f"{role_name} bad priority item"
                 action_name, score = item
                 assert isinstance(action_name, str)
@@ -105,29 +105,29 @@ class TestRolesConfig:
 
     def test_gatherer_allowed_actions(self):
         """Gatherer can perform basic survival actions."""
-        from config.roles import ROLES
-        gatherer = ROLES["gatherer"]
-        assert "gather" in gatherer["allowed_actions"]
-        assert "eat" in gatherer["allowed_actions"]
-        assert "drink" in gatherer["allowed_actions"]
-        assert "rest" in gatherer["allowed_actions"]
+        from app.core.definitions import DEFINITIONS
+        gatherer = DEFINITIONS.roles["gatherer"]
+        assert "gather" in gatherer.allowed_actions
+        assert "eat" in gatherer.allowed_actions
+        assert "drink" in gatherer.allowed_actions
+        assert "rest" in gatherer.allowed_actions
 
     def test_fighter_allowed_actions(self):
         """Fighter can attack and basic survival actions."""
-        from config.roles import ROLES
-        fighter = ROLES["fighter"]
-        assert "attack" in fighter["allowed_actions"] or "move" in fighter["allowed_actions"]
+        from app.core.definitions import DEFINITIONS
+        fighter = DEFINITIONS.roles["fighter"]
+        assert "attack" in fighter.allowed_actions or "move" in fighter.allowed_actions
 
     def test_scout_has_explore_priority(self):
         """Scout prioritizes explore action."""
-        from config.roles import ROLES
-        scout = ROLES["scout"]
-        actions = [a for a, _ in scout["priorities"]]
+        from app.core.definitions import DEFINITIONS
+        scout = DEFINITIONS.roles["scout"]
+        actions = [a for a, _ in scout.priorities]
         assert "explore" in actions
 
     def test_miner_has_mine_priority(self):
         """Miner prioritizes mine action."""
-        from config.roles import ROLES
-        miner = ROLES["miner"]
-        actions = [a for a, _ in miner["priorities"]]
+        from app.core.definitions import DEFINITIONS
+        miner = DEFINITIONS.roles["miner"]
+        actions = [a for a, _ in miner.priorities]
         assert "mine" in actions

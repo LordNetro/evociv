@@ -35,6 +35,9 @@ class AgentState(BaseModel):
     current_dialogue: str | None = None
     dialogue_type: str | None = None
     equipment: dict[str, str] = {}
+    skills: dict[str, int] = {}
+    active_effects: dict[str, dict] = {}
+    emotions: dict[str, dict] = {}
 
 
 # --- Simulation Metrics ---
@@ -98,3 +101,6 @@ class WorldSnapshot(BaseModel):
     factions: list[dict] = []
     colony_stats: dict | None = None
     structures: list[StructureUpdate] = []
+    time_state: dict = {}
+    weather_state: dict = {}
+    faction_tile_visibility: dict[str, dict[str, list[dict]]] = {}

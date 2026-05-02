@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from app.core.definitions import DEFINITIONS
 from app.simulation.structures import StructureManager
+from app.simulation.time import TimeSystem
+from app.simulation.weather import WeatherSystem
+from app.simulation.agent import Agent
 
 
 class ResourceType(str, Enum):
@@ -45,6 +49,8 @@ class World:
         ]
         self.dirty_tiles: set[tuple[int, int]] = set()
         self.structures = StructureManager()
+        self.time = TimeSystem()
+        self.weather = WeatherSystem()
         self.generate_initial_resources()
 
     def get_tile(self, x: int, y: int) -> Tile:
@@ -99,7 +105,7 @@ class World:
         return []
 
     def generate_initial_resources(self) -> None:
-        """Place resources at random positions using the seed."""
+        """Place resources at random positions using parameters from DEFINITIONS."""
         rng = random.Random(self._seed)
         empty_tiles = [
             (x, y)
@@ -108,56 +114,37 @@ class World:
         ]
         rng.shuffle(empty_tiles)
 
-        # Trees: ~80, amount 5-15 each, regen_rate 0.01
-        self._place_resource(
-            empty_tiles, ResourceType.TREE, count=80, amount_range=(5, 15), regen_rate=0.01, rng=rng
-        )
+        # Map from DEFINITIONS resource names to tile resource type strings
+        tile_map = {
+            "wood": "tree",
+            "water": "water",
+            "berries": "berries",
+            "stone": "stone",
+            "iron_ore": "iron_ore",
+            "clay": "clay",
+            "sand": "sand",
+            "fiber": "fiber",
+            "deer": "deer",
+            "rabbit": "rabbit",
+            "boar": "boar",
+        }
 
-        # Water: ~15, amount 100, regen_rate 0
-        self._place_resource(
-            empty_tiles, ResourceType.WATER, count=15, amount_range=(100, 100), regen_rate=0.0, rng=rng
-        )
-
-        # Berries: ~40, amount 3-8 each, regen_rate 0.05
-        self._place_resource(
-            empty_tiles, ResourceType.BERRIES, count=40, amount_range=(3, 8), regen_rate=0.05, rng=rng
-        )
-
-        # Stone: ~20, amount 10-30 each, regen_rate 0
-        self._place_resource(
-            empty_tiles, ResourceType.STONE, count=20, amount_range=(10, 30), regen_rate=0.0, rng=rng
-        )
-
-        # Iron ore: ~15, amount 5-20 each, regen_rate 0
-        self._place_resource(
-            empty_tiles, ResourceType.IRON, count=15, amount_range=(5, 20), regen_rate=0.0, rng=rng
-        )
-
-        # Clay: ~25, amount 5-10 each, regen_rate 0.02
-        self._place_resource(
-            empty_tiles, ResourceType.CLAY, count=25, amount_range=(5, 10), regen_rate=0.02, rng=rng
-        )
-
-        # Sand: ~30, amount 10-20 each, regen_rate 0
-        self._place_resource(
-            empty_tiles, ResourceType.SAND, count=30, amount_range=(10, 20), regen_rate=0.0, rng=rng
-        )
-
-        # Fiber: ~20, amount 3-8 each, regen_rate 0.05
-        self._place_resource(
-            empty_tiles, ResourceType.FIBER, count=20, amount_range=(3, 8), regen_rate=0.05, rng=rng
-        )
-
-        # Animals: deer ~10, rabbit ~6, boar ~4, amount 1-3 each, regen_rate 0.02
-        self._place_resource(
-            empty_tiles, "deer", count=10, amount_range=(1, 3), regen_rate=0.02, rng=rng
-        )
-        self._place_resource(
-            empty_tiles, "rabbit", count=6, amount_range=(1, 3), regen_rate=0.02, rng=rng
-        )
-        self._place_resource(
-            empty_tiles, "boar", count=4, amount_range=(1, 3), regen_rate=0.02, rng=rng
-        )
+        # Place resources based on DEFINITIONS data
+        for res_name, res_def in DEFINITIONS.resources.items():
+            tile_type = tile_map.get(res_name)
+            if tile_type is None:
+                continue  # Not a placable tile resource (crafted, subproduct)
+            props = res_def.properties
+            count = props.get("count")
+            if count is None:
+                continue  # No generation params for this resource
+            min_amt = props.get("min_amount", 1)
+            max_amt = props.get("max_amount", 1)
+            regen = props.get("regen_rate", 0.0)
+            self._place_resource(
+                empty_tiles, tile_type, count=count,
+                amount_range=(min_amt, max_amt), regen_rate=regen, rng=rng,
+            )
 
     def _place_resource(
         self,
@@ -222,3 +209,21 @@ class World:
     def reset_dirty_tiles(self) -> None:
         """Clear the dirty tile tracking set."""
         self.dirty_tiles.clear()
+
+    def advance_time(self, agents: list[Agent], tick: int | None = None) -> dict:
+        """Advance time and weather by one tick.
+
+        Calls ``TimeSystem.tick()`` and ``WeatherSystem.tick()``, applying
+        weather effects (status effects + emotion triggers) to all agents.
+
+        Args:
+            agents: List of agents to apply weather effects to.
+            tick: Current simulation tick number (for emotion cooldowns).
+
+        Returns:
+            A dict with weather change info:
+            ``{"weather_changed": bool, "previous": str, "current": str}``
+        """
+        self.time.tick()
+        weather_changes = self.weather.tick(agents=agents, world=self, tick=tick)
+        return weather_changes

@@ -21,7 +21,7 @@
 		});
 		renderer.setClearColor(0x1a1a2e);
 		renderer.toneMapping = ACESFilmicToneMapping;
-		renderer.toneMappingExposure = 1.0;
+		renderer.toneMappingExposure = 0.8;
 		return renderer;
 	};
 </script>

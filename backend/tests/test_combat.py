@@ -89,3 +89,32 @@ class TestCombatManager:
         """Empty string weapon returns empty dict."""
         stats = CombatManager.get_weapon_stats("")
         assert stats == {}
+
+    def test_melee_damage_with_effects_baseline(self):
+        """Melee damage with effects: zero-skill agent gets same as base."""
+        from app.simulation.agent import Agent
+        agent = Agent(id="test", name="Test", position=(0.0, 0.0))
+        agent.strength = 60
+        dmg = CombatManager.calculate_melee_damage_with_effects(agent, 15, 10)
+        # base = max(1, 15 + 60*0.2 - 10*0.5) = 22
+        # skill_mod = 1.0 (no combat skill), effect_mod = 1.0 (no effects)
+        assert dmg == 22.0
+
+    def test_ranged_damage_with_effects_baseline(self):
+        """Ranged damage with effects: zero-skill agent gets same as base."""
+        from app.simulation.agent import Agent
+        agent = Agent(id="test", name="Test", position=(0.0, 0.0))
+        agent.intelligence = 50
+        dmg = CombatManager.calculate_ranged_damage_with_effects(agent, 12, 5)
+        # base = max(1, 12 + 50*0.1 - 5*0.3) = 15.5
+        assert dmg == 15.5
+
+    def test_melee_damage_with_combat_skill(self):
+        """Melee damage increases with combat skill level."""
+        from app.simulation.agent import Agent
+        agent = Agent(id="test", name="Test", position=(0.0, 0.0))
+        agent.strength = 60
+        agent.skills["combat"] = 500  # level 3, damage_multiplier 1.10^3 = 1.331
+        dmg = CombatManager.calculate_melee_damage_with_effects(agent, 15, 10)
+        # base = 22, skill_mod = 1.331, effect_mod = 1.0
+        assert round(dmg, 1) == 29.3  # 22 * 1.331 = 29.282

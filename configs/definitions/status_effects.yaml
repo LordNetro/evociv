@@ -1,0 +1,92 @@
+status_effects:
+  poisoned:
+    category: debuff
+    duration: 60
+    max_stacks: 3
+    modifiers:
+      health_delta: -0.5
+    triggers:
+      on_consume: poisonous_berry
+    removal_conditions:
+      - rest_complete
+      - heal_action
+  exhausted:
+    category: debuff
+    duration: 30
+    max_stacks: 1
+    modifiers:
+      speed_multiplier: 0.5
+    triggers:
+      on_energy_low: 20
+    removal_conditions:
+      - rest_complete
+  well_fed:
+    category: buff
+    duration: 50
+    max_stacks: 2
+    modifiers:
+      speed_multiplier: 1.1
+      health_regen: 0.1
+    triggers:
+      on_eat: any
+  hydrated:
+    category: buff
+    duration: 40
+    max_stacks: 2
+    modifiers:
+      speed_multiplier: 1.1
+    triggers:
+      on_drink: any
+  inspired:
+    category: buff
+    duration: 30
+    max_stacks: 1
+    modifiers:
+      skill_effect_multiplier: 1.2
+    triggers:
+      on_socialize: any
+  bleeding:
+    category: debuff
+    duration: 45
+    max_stacks: 3
+    modifiers:
+      health_delta: -0.8
+    triggers:
+      on_critical_hit: any
+    removal_conditions:
+      - heal_action
+      - bandage
+  guarding:
+    category: buff
+    duration: 0
+    max_stacks: 1
+    modifiers:
+      damage_reduction: 0.5
+  berserk:
+    category: buff
+    duration: 20
+    max_stacks: 1
+    modifiers:
+      damage_multiplier: 2.0
+      damage_reduction: -0.5
+    triggers:
+      on_health_low: 20
+  wet:
+    category: debuff
+    duration: 0
+    max_stacks: 1
+    modifiers:
+      speed_multiplier: 0.9
+  chilled:
+    category: debuff
+    duration: 0
+    max_stacks: 3
+    modifiers:
+      speed_multiplier: 0.8
+      health_delta: -0.3
+  overheated:
+    category: debuff
+    duration: 0
+    max_stacks: 2
+    modifiers:
+      thirst_decay_multiplier: 2.0

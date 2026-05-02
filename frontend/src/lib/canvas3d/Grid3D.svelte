@@ -23,7 +23,14 @@
 		tree: new THREE.Color('#2e7d32'),
 		berries: new THREE.Color('#c62828'),
 		stone: new THREE.Color('#757575'),
-		default: new THREE.Color('#5d4037')
+		iron_ore: new THREE.Color('#5c6bc0'),
+		clay: new THREE.Color('#bcaaa4'),
+		sand: new THREE.Color('#fff59d'),
+		fiber: new THREE.Color('#81c784'),
+		deer: new THREE.Color('#8d6e63'),
+		rabbit: new THREE.Color('#a1887f'),
+		boar: new THREE.Color('#6d4c41'),
+		default: new THREE.Color('#3e2723')
 	};
 
 	let meshRef: THREE.InstancedMesh | undefined = $state();
@@ -72,6 +79,6 @@
 </script>
 
 <T.InstancedMesh bind:ref={meshRef}>
-	<T.BoxGeometry args={[1, 0.1, 1]} />
+	<T.BoxGeometry args={[0.98, 0.08, 0.98]} />
 	<T is={gridMat} />
 </T.InstancedMesh>

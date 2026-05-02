@@ -1,0 +1,95 @@
+# Weather definitions file.
+# Each entry defines a weather type with effects, status effects to apply,
+# emotion triggers, and transition weights.
+
+weather:
+  clear:
+    name: clear
+    icon: ☀️
+    category: fair
+    duration_min: 100
+    duration_max: 300
+    visibility_multiplier: 1.0
+    resource_regen_multiplier: 1.0
+    effects: {}
+    status_effects_to_apply: []
+    emotion_triggers:
+      on_weather_clear: 0.15
+    transitions:
+      rainy: 20
+      fog: 10
+
+  rainy:
+    name: rainy
+    icon: 🌧️
+    category: precipitation
+    duration_min: 50
+    duration_max: 200
+    visibility_multiplier: 0.7
+    resource_regen_multiplier: 1.2
+    effects:
+      speed_multiplier: 0.85
+    status_effects_to_apply:
+      - wet
+    emotion_triggers:
+      on_weather_rain: 0.2
+    transitions:
+      clear: 15
+      storm: 10
+      fog: 5
+
+  storm:
+    name: storm
+    icon: ⛈️
+    category: extreme
+    duration_min: 30
+    duration_max: 120
+    visibility_multiplier: 0.4
+    resource_regen_multiplier: 0.8
+    effects:
+      speed_multiplier: 0.6
+    status_effects_to_apply:
+      - wet
+      - chilled
+    emotion_triggers:
+      on_weather_storm: 0.3
+    transitions:
+      rainy: 30
+      clear: 5
+
+  fog:
+    name: fog
+    icon: 🌫️
+    category: fog
+    duration_min: 40
+    duration_max: 150
+    visibility_multiplier: 0.5
+    resource_regen_multiplier: 1.0
+    effects:
+      speed_multiplier: 0.9
+    status_effects_to_apply:
+      - chilled
+    emotion_triggers:
+      on_weather_fog: 0.1
+    transitions:
+      clear: 15
+      rainy: 10
+
+  heatwave:
+    name: heatwave
+    icon: 🔥
+    category: extreme
+    duration_min: 40
+    duration_max: 160
+    visibility_multiplier: 0.9
+    resource_regen_multiplier: 0.7
+    effects:
+      speed_multiplier: 0.8
+      thirst_decay_multiplier: 2.0
+    status_effects_to_apply:
+      - overheated
+    emotion_triggers:
+      on_weather_heatwave: 0.2
+    transitions:
+      clear: 20
+      storm: 5

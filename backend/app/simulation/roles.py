@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from app.core.definitions import DEFINITIONS
 from app.simulation.agent import Agent
 from app.simulation.actions import ActionType
-from config.roles import ROLES, DEFAULT_ROLE
+
+
+ROLES = DEFINITIONS.roles
+DEFAULT_ROLE = DEFINITIONS.default_role
 
 
 def get_role_config(role_name: str) -> dict:
@@ -12,7 +16,9 @@ def get_role_config(role_name: str) -> dict:
 
     Falls back to :data:`DEFAULT_ROLE` if the name is unknown.
     """
-    return ROLES.get(role_name, ROLES[DEFAULT_ROLE])
+    role = ROLES.get(role_name, ROLES[DEFAULT_ROLE])
+    # Convert RoleDef model to plain dict for backward-compatible dict access
+    return role.model_dump()
 
 
 def apply_role_stats(agent: Agent) -> None:

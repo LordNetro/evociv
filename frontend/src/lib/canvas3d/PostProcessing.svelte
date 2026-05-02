@@ -53,9 +53,9 @@
 
 	$effect(() => {
 		if (composer) {
-			const bloomPass = composer.passes.find(
-				(p) => p instanceof UnrealBloomPass
-			) as UnrealBloomPass | undefined;
+			const bloomPass = composer.passes.find((p) => p instanceof UnrealBloomPass) as
+				| UnrealBloomPass
+				| undefined;
 			if (bloomPass) {
 				bloomPass.strength = bloomEnabled ? 0.3 : 0;
 			}

@@ -29,10 +29,7 @@
 </script>
 
 {#if pos}
-	<T.Mesh
-		position={[pos.x + 0.5, 0.05, pos.y + 0.5]}
-		rotation={[-Math.PI / 2, 0, 0]}
-	>
+	<T.Mesh position={[pos.x + 0.5, 0.05, pos.y + 0.5]} rotation={[-Math.PI / 2, 0, 0]}>
 		<T.RingGeometry args={[0.5, 0.6, 32]} />
 		<T is={pulseMat} />
 	</T.Mesh>

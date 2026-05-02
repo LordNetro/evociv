@@ -203,60 +203,42 @@
 {/if}
 
 {#if berries.length > 0}
-	<T.InstancedMesh
-		bind:ref={berryRef}
-		oncreate={(ref) => setupInteractivity(ref, 'berry')}
-	>
+	<T.InstancedMesh bind:ref={berryRef} oncreate={(ref) => setupInteractivity(ref, 'berry')}>
 		<T is={RESOURCE_GEO.berry} />
 		<T is={berryMat} />
 	</T.InstancedMesh>
 {/if}
 
 {#if stones.length > 0}
-	<T.InstancedMesh
-		bind:ref={stoneRef}
-		oncreate={(ref) => setupInteractivity(ref, 'stone')}
-	>
+	<T.InstancedMesh bind:ref={stoneRef} oncreate={(ref) => setupInteractivity(ref, 'stone')}>
 		<T is={RESOURCE_GEO.stone} />
 		<T is={stoneMat} />
 	</T.InstancedMesh>
 {/if}
 
 {#if ironOres.length > 0}
-	<T.InstancedMesh
-		bind:ref={ironOreRef}
-		oncreate={(ref) => setupInteractivity(ref, 'iron_ore')}
-	>
+	<T.InstancedMesh bind:ref={ironOreRef} oncreate={(ref) => setupInteractivity(ref, 'iron_ore')}>
 		<T is={RESOURCE_GEO.iron_ore} />
 		<T is={ironOreMat} />
 	</T.InstancedMesh>
 {/if}
 
 {#if clays.length > 0}
-	<T.InstancedMesh
-		bind:ref={clayRef}
-		oncreate={(ref) => setupInteractivity(ref, 'clay')}
-	>
+	<T.InstancedMesh bind:ref={clayRef} oncreate={(ref) => setupInteractivity(ref, 'clay')}>
 		<T is={RESOURCE_GEO.clay} />
 		<T is={clayMat} />
 	</T.InstancedMesh>
 {/if}
 
 {#if sands.length > 0}
-	<T.InstancedMesh
-		bind:ref={sandRef}
-		oncreate={(ref) => setupInteractivity(ref, 'sand')}
-	>
+	<T.InstancedMesh bind:ref={sandRef} oncreate={(ref) => setupInteractivity(ref, 'sand')}>
 		<T is={RESOURCE_GEO.sand} />
 		<T is={sandMat} />
 	</T.InstancedMesh>
 {/if}
 
 {#if fibers.length > 0}
-	<T.InstancedMesh
-		bind:ref={fiberRef}
-		oncreate={(ref) => setupInteractivity(ref, 'fiber')}
-	>
+	<T.InstancedMesh bind:ref={fiberRef} oncreate={(ref) => setupInteractivity(ref, 'fiber')}>
 		<T is={RESOURCE_GEO.fiber} />
 		<T is={fiberMat} />
 	</T.InstancedMesh>

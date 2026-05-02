@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { T, useTask } from '@threlte/core';
-	import { ShaderMaterial, Color } from 'three';
+	import { ShaderMaterial } from 'three';
 	import * as THREE from 'three';
 	import gridVert from '$lib/shaders/grid.vert.glsl?raw';
 	import gridFrag from '$lib/shaders/grid.frag.glsl?raw';

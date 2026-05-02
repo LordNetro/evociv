@@ -164,7 +164,6 @@
 		const arr = resourceArrays[type as keyof typeof resourceArrays]();
 		const resource = arr[instanceId];
 		if (resource) {
-			// eslint-disable-next-line no-console
 			console.log('Clicked resource:', resource);
 		}
 	}

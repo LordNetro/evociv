@@ -1,0 +1,31 @@
+# Simulation configuration file.
+# Mirrors engine.py module-level constants.
+
+simulation:
+  hunger_decay: 0.04
+  thirst_decay: 0.06
+  energy_decay: 0.03
+  critical_hunger: 70
+  critical_thirst: 70
+  critical_llm_trigger: 85
+  interaction_radius: 3.0
+  reproduction_cooldown: 500
+  max_population: 20
+  interaction_threshold: 5
+  decay_interval: 100
+  combat:
+    guard_multiplier: 0.5
+    melee_strength_factor: 0.2
+    melee_armor_factor: 0.5
+    ranged_intelligence_factor: 0.1
+    ranged_armor_factor: 0.3
+  time:
+    day_length_ticks: 1000
+    daylight_ticks: 600
+    night_ticks: 400
+    effects:
+      night:
+        resource_regen_multiplier: 0.5
+        thirst_decay_multiplier: 0.5
+        energy_regen_multiplier: 1.5
+        visibility_multiplier: 0.7

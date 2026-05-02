@@ -1,0 +1,83 @@
+emotions:
+  happy:
+    category: positive
+    icon: 😊
+    decay_per_tick: 0.005
+    effects:
+      speed_multiplier: 1.05
+      sociability_bonus: 0.1
+    triggers:
+      on_eat: 0.3
+      on_socialize: 0.2
+      on_child_birth: 0.4
+      on_faction_growth: 0.2
+      on_weather_clear: 0.15
+  sad:
+    category: negative
+    icon: 😢
+    decay_per_tick: 0.008
+    effects:
+      speed_multiplier: 0.95
+    triggers:
+      on_lose_combat: 0.4
+      on_faction_death: 0.5
+      on_weather_rain: 0.2
+  angry:
+    category: negative
+    icon: 😠
+    decay_per_tick: 0.010
+    effects:
+      damage_multiplier: 1.15
+      speed_multiplier: 1.1
+    triggers:
+      on_win_combat: 0.2
+      on_lose_combat: 0.3
+      on_combat_damage_taken: 0.2
+      on_weather_heatwave: 0.2
+  fearful:
+    category: negative
+    icon: 😨
+    decay_per_tick: 0.008
+    effects:
+      damage_multiplier: 0.9
+      speed_multiplier: 0.9
+    triggers:
+      on_discovery: 0.15
+      on_health_low: 0.3
+      on_weather_storm: 0.3
+      on_weather_fog: 0.1
+  calm:
+    category: positive
+    icon: 😌
+    decay_per_tick: 0.004
+    effects:
+      speed_multiplier: 1.1
+    triggers:
+      on_rest: 0.3
+  hopeful:
+    category: positive
+    icon: 🤞
+    decay_per_tick: 0.005
+    effects:
+      damage_multiplier: 1.05
+    triggers:
+      on_skill_up: 0.3
+      on_faction_growth: 0.3
+      on_child_birth: 0.4
+  proud:
+    category: positive
+    icon: 🏆
+    decay_per_tick: 0.006
+    effects:
+      damage_multiplier: 1.1
+      sociability_bonus: 0.15
+    triggers:
+      on_build_complete: 0.4
+  curious:
+    category: neutral
+    icon: 🤔
+    decay_per_tick: 0.007
+    effects:
+      speed_multiplier: 1.05
+    triggers:
+      on_discovery: 0.3

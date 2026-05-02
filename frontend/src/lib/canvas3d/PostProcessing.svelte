@@ -28,9 +28,9 @@
 
 		const bloomPass = new UnrealBloomPass(
 			new Vector2(window.innerWidth, window.innerHeight),
-			bloomEnabled ? 0.3 : 0,
-			0.5,
-			0.8
+			bloomEnabled ? 0.15 : 0,
+			0.3,
+			0.9
 		);
 		composer.addPass(bloomPass);
 		composer.addPass(new OutputPass());

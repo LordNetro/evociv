@@ -1,0 +1,257 @@
+# Resources definition file.
+# Natural resources, animals, crafted items, and sub-products.
+# Generated from world.py generate_initial_resources() and crafting.py RECIPES.
+
+resources:
+  # ── Natural resources (from world.py ResourceType + generate_initial_resources) ──
+  wood:
+    name: wood
+    category: natural
+    properties:
+      count: 80
+      min_amount: 5
+      max_amount: 15
+      regen_rate: 0.01
+
+  water:
+    name: water
+    category: natural
+    properties:
+      count: 15
+      min_amount: 100
+      max_amount: 100
+      regen_rate: 0.0
+
+  berries:
+    name: berries
+    category: natural
+    properties:
+      count: 40
+      min_amount: 3
+      max_amount: 8
+      regen_rate: 0.05
+
+  stone:
+    name: stone
+    category: natural
+    properties:
+      count: 20
+      min_amount: 10
+      max_amount: 30
+      regen_rate: 0.0
+
+  iron_ore:
+    name: iron_ore
+    category: natural
+    properties:
+      count: 15
+      min_amount: 5
+      max_amount: 20
+      regen_rate: 0.0
+
+  clay:
+    name: clay
+    category: natural
+    properties:
+      count: 25
+      min_amount: 5
+      max_amount: 10
+      regen_rate: 0.02
+
+  sand:
+    name: sand
+    category: natural
+    properties:
+      count: 30
+      min_amount: 10
+      max_amount: 20
+      regen_rate: 0.0
+
+  fiber:
+    name: fiber
+    category: natural
+    properties:
+      count: 20
+      min_amount: 3
+      max_amount: 8
+      regen_rate: 0.05
+
+  # ── Animals (from world.py generate_initial_resources) ──
+  deer:
+    name: deer
+    category: animal
+    properties:
+      count: 10
+      min_amount: 1
+      max_amount: 3
+      regen_rate: 0.02
+      sub_products:
+        - hide
+        - bone
+        - meat
+
+  rabbit:
+    name: rabbit
+    category: animal
+    properties:
+      count: 6
+      min_amount: 1
+      max_amount: 3
+      regen_rate: 0.02
+      sub_products:
+        - hide
+        - bone
+        - meat
+
+  boar:
+    name: boar
+    category: animal
+    properties:
+      count: 4
+      min_amount: 1
+      max_amount: 3
+      regen_rate: 0.02
+      sub_products:
+        - hide
+        - bone
+        - meat
+
+  # ── Crafted items (outputs from crafting.py RECIPES) ──
+  stone_axe:
+    name: stone_axe
+    category: crafted
+    properties:
+      stackable: false
+
+  stone_pickaxe:
+    name: stone_pickaxe
+    category: crafted
+    properties:
+      stackable: false
+
+  spear:
+    name: spear
+    category: crafted
+    properties:
+      stackable: false
+
+  fishing_rod:
+    name: fishing_rod
+    category: crafted
+    properties:
+      stackable: false
+
+  bow:
+    name: bow
+    category: crafted
+    properties:
+      stackable: false
+
+  fiber_armor:
+    name: fiber_armor
+    category: crafted
+    properties:
+      stackable: false
+
+  hoe:
+    name: hoe
+    category: crafted
+    properties:
+      stackable: false
+
+  iron_sword:
+    name: iron_sword
+    category: crafted
+    properties:
+      stackable: false
+
+  iron_axe:
+    name: iron_axe
+    category: crafted
+    properties:
+      stackable: false
+
+  hide_armor:
+    name: hide_armor
+    category: crafted
+    properties:
+      stackable: false
+
+  arrows:
+    name: arrows
+    category: crafted
+    properties:
+      stackable: true
+
+  planks:
+    name: planks
+    category: crafted
+    properties:
+      stackable: true
+
+  stone_blade:
+    name: stone_blade
+    category: crafted
+    properties:
+      stackable: false
+
+  rope:
+    name: rope
+    category: crafted
+    properties:
+      stackable: true
+
+  hide_vest:
+    name: hide_vest
+    category: crafted
+    properties:
+      stackable: false
+
+  iron_ingot:
+    name: iron_ingot
+    category: crafted
+    properties:
+      stackable: true
+
+  bone_armor:
+    name: bone_armor
+    category: crafted
+    properties:
+      stackable: false
+
+  arrow:
+    name: arrow
+    category: crafted
+    properties:
+      stackable: true
+
+  workbench:
+    name: workbench
+    category: crafted
+    properties:
+      stackable: false
+
+  # ── Sub-products (from hunting/fishing) ──
+  hide:
+    name: hide
+    category: subproduct
+    properties:
+      source: animal
+
+  bone:
+    name: bone
+    category: subproduct
+    properties:
+      source: animal
+
+  meat:
+    name: meat
+    category: subproduct
+    properties:
+      source: animal
+
+  fish:
+    name: fish
+    category: subproduct
+    properties:
+      source: water

@@ -7,6 +7,7 @@ import time
 from app.simulation.world import World
 from app.simulation.agent import Agent
 from app.simulation.event_queue import SimEvent as EngineEvent
+from app.simulation.map_memory import MapMemoryManager
 from app.models.schemas import WorldSnapshot, TileUpdate, AgentState, SimulationMetrics, SimEvent as SchemaEvent, StructureUpdate
 
 
@@ -75,6 +76,15 @@ class WorldSnapshotBuilder:
             current_dialogue=agent.current_dialogue,
             dialogue_type=agent.dialogue_type,
             equipment=dict(agent.equipment),
+            skills=dict(agent.skills),
+            active_effects={
+                name: {
+                    "remaining_ticks": data["remaining_ticks"],
+                    "current_stacks": data.get("current_stacks", 1),
+                }
+                for name, data in agent.active_effects.items()
+            },
+            emotions=dict(agent.emotions),
         )
 
     def _compute_metrics(self) -> SimulationMetrics:
@@ -160,6 +170,14 @@ class WorldSnapshotBuilder:
                 for f in faction_manager.list_all()
             ]
 
+        # Faction tile visibility (fog of war)
+        faction_tile_visibility = {}
+        if faction_manager:
+            for f in faction_manager.get_all().values():
+                faction_tile_visibility[f.id] = MapMemoryManager.get_faction_tile_visibility(
+                    f, self.world, tick
+                )
+
         removed = list(self._removed_agents)
         self._removed_agents.clear()
         return WorldSnapshot(
@@ -173,6 +191,16 @@ class WorldSnapshotBuilder:
             factions=factions,
             colony_stats=colony_stats,
             structures=self._build_structures_list(),
+            time_state={
+                "is_night": self.world.time.is_night,
+                "tick_count_of_day": self.world.time.tick_count_of_day,
+                "day_count": self.world.time.day_count,
+                "day_length_ticks": self.world.time.day_length_ticks,
+                "daylight_ticks": self.world.time.daylight_ticks,
+                "label": self.world.time.time_of_day_label,
+            },
+            weather_state=self.world.weather.get_weather_state(),
+            faction_tile_visibility=faction_tile_visibility,
         )
 
     def build_delta(
@@ -223,6 +251,14 @@ class WorldSnapshotBuilder:
         dirty_structures = self._build_structures_list(self._dirty_structures)
         self._dirty_structures.clear()
 
+        # Faction tile visibility (fog of war)
+        faction_tile_visibility = {}
+        if faction_manager:
+            for f in faction_manager.get_all().values():
+                faction_tile_visibility[f.id] = MapMemoryManager.get_faction_tile_visibility(
+                    f, self.world, tick
+                )
+
         return WorldSnapshot(
             tick=tick,
             timestamp=time.time(),
@@ -234,6 +270,16 @@ class WorldSnapshotBuilder:
             factions=factions,
             colony_stats=colony_stats,
             structures=dirty_structures,
+            time_state={
+                "is_night": self.world.time.is_night,
+                "tick_count_of_day": self.world.time.tick_count_of_day,
+                "day_count": self.world.time.day_count,
+                "day_length_ticks": self.world.time.day_length_ticks,
+                "daylight_ticks": self.world.time.daylight_ticks,
+                "label": self.world.time.time_of_day_label,
+            },
+            weather_state=self.world.weather.get_weather_state(),
+            faction_tile_visibility=faction_tile_visibility,
         )
 
 

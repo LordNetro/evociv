@@ -130,6 +130,15 @@ class RealLLMOrchestrator:
                 entries.append(f"{name}: score={rel.score:.2f}, interactions={rel.interaction_count}")
             rel_context = "; ".join(entries)
 
+        # Format weather and time context
+        weather_str = "(unknown)"
+        time_str = "(unknown)"
+        if world and hasattr(world, 'weather') and hasattr(world, 'time'):
+            w_def = world.weather._get_current_def()
+            weather_str = f"{w_def.icon} {w_def.name}" if w_def else world.weather.current_weather
+            t = world.time
+            time_str = f"{t.time_of_day_label} (Day {t.day_count}, tick {t.tick_count_of_day}/{t.day_length_ticks})"
+
         return build_agent_prompt(
             agent=agent,
             nearby_resources=nearby_resources,
@@ -143,6 +152,8 @@ class RealLLMOrchestrator:
             equipment=equipment,
             nearby_hostiles=nearby_hostiles,
             relationship_context=rel_context,
+            weather=weather_str,
+            time_str=time_str,
         )
 
     async def check_availability(self) -> bool:

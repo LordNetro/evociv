@@ -1,0 +1,227 @@
+# Recipes definition file.
+# Mirrors crafting.py RECIPES dict exactly.
+# Each recipe: name, inputs, output, workbench, workbench_level, duration, category, modifiers.
+
+recipes:
+  stone_axe:
+    name: stone_axe
+    inputs:
+      wood: 3
+      stone: 2
+    output:
+      stone_axe: 1
+    duration: 10
+    category: tool
+    modifiers:
+      chop_speed: 2
+      attack_damage: 5
+
+  stone_pickaxe:
+    name: stone_pickaxe
+    inputs:
+      wood: 3
+      stone: 3
+    output:
+      stone_pickaxe: 1
+    duration: 10
+    category: tool
+    modifiers:
+      mine_speed: 2
+
+  workbench_structure:
+    name: workbench_structure
+    inputs:
+      wood: 10
+      stone: 5
+    output:
+      workbench: 1
+    duration: 20
+    category: structure
+
+  spear:
+    name: spear
+    inputs:
+      wood: 4
+      stone: 3
+    output:
+      spear: 1
+    workbench: basic
+    duration: 15
+    category: weapon
+    modifiers:
+      attack_damage: 15
+      hunt_bonus: 2
+
+  fishing_rod:
+    name: fishing_rod
+    inputs:
+      wood: 5
+      fiber: 3
+    output:
+      fishing_rod: 1
+    workbench: basic
+    duration: 12
+    category: tool
+    modifiers:
+      fish_bonus: 2
+
+  bow:
+    name: bow
+    inputs:
+      wood: 6
+      fiber: 4
+    output:
+      bow: 1
+    workbench: basic
+    duration: 18
+    category: weapon
+    modifiers:
+      attack_damage: 12
+      ranged: true
+
+  fiber_armor:
+    name: fiber_armor
+    inputs:
+      fiber: 8
+    output:
+      fiber_armor: 1
+    duration: 8
+    category: armor
+    modifiers:
+      damage_reduction: 0.3
+
+  hoe:
+    name: hoe
+    inputs:
+      wood: 4
+      stone: 2
+    output:
+      hoe: 1
+    duration: 8
+    category: tool
+    modifiers:
+      farm_speed: 2
+
+  iron_sword:
+    name: iron_sword
+    inputs:
+      iron_ore: 5
+      wood: 2
+    output:
+      iron_sword: 1
+    workbench: forge
+    duration: 25
+    category: weapon
+    modifiers:
+      attack_damage: 25
+
+  iron_axe:
+    name: iron_axe
+    inputs:
+      iron_ore: 4
+      wood: 2
+    output:
+      iron_axe: 1
+    workbench: forge
+    duration: 22
+    category: tool
+    modifiers:
+      chop_speed: 4
+
+  hide_armor:
+    name: hide_armor
+    inputs:
+      hide: 5
+      fiber: 3
+    output:
+      hide_armor: 1
+    workbench: basic
+    duration: 15
+    category: armor
+    modifiers:
+      damage_reduction: 0.5
+
+  arrows:
+    name: arrows
+    inputs:
+      wood: 2
+      stone: 1
+    output:
+      arrows: 10
+    duration: 5
+    category: ammo
+
+  planks:
+    name: planks
+    inputs:
+      wood: 2
+    output:
+      planks: 2
+    duration: 5
+    category: material
+
+  stone_blade:
+    name: stone_blade
+    inputs:
+      stone: 2
+    output:
+      stone_blade: 1
+    duration: 8
+    category: weapon
+    modifiers:
+      attack_damage: 8
+
+  rope:
+    name: rope
+    inputs:
+      fiber: 3
+    output:
+      rope: 1
+    duration: 4
+    category: material
+
+  hide_vest:
+    name: hide_vest
+    inputs:
+      hide: 3
+      fiber: 2
+    output:
+      hide_vest: 1
+    workbench: basic
+    duration: 10
+    category: armor
+    modifiers:
+      damage_reduction: 8
+
+  iron_ingot:
+    name: iron_ingot
+    inputs:
+      iron_ore: 3
+    output:
+      iron_ingot: 1
+    workbench: forge
+    duration: 15
+    category: material
+
+  bone_armor:
+    name: bone_armor
+    inputs:
+      hide: 5
+      bone: 3
+    output:
+      bone_armor: 1
+    workbench: basic
+    duration: 18
+    category: armor
+    modifiers:
+      damage_reduction: 15
+
+  arrow:
+    name: arrow
+    inputs:
+      wood: 1
+      stone: 1
+    output:
+      arrow: 5
+    duration: 3
+    category: ammo

@@ -1,0 +1,66 @@
+skills:
+  carpentry:
+    category: labor
+    base_xp_per_action:
+      chop: 5
+      build: 10
+    effects_per_level:
+      speed_multiplier: 0.95
+      quality_multiplier: 1.05
+    unlocks: []
+  combat:
+    category: combat
+    base_xp_per_action:
+      attack: 20
+    effects_per_level:
+      damage_multiplier: 1.10
+    unlocks: []
+  survival:
+    category: survival
+    base_xp_per_action:
+      gather: 3
+      hunt: 8
+      fish: 8
+    effects_per_level:
+      speed_multiplier: 0.97
+      weather_resistance: 0.01
+      vision_range: 1
+    unlocks: []
+  crafting:
+    category: crafting
+    base_xp_per_action:
+      craft: 8
+    effects_per_level:
+      speed_multiplier: 0.95
+      quality_multiplier: 1.10
+    unlocks: []
+  social:
+    category: social
+    base_xp_per_action:
+      talk: 4
+      trade: 6
+    effects_per_level:
+      trade_efficiency: 1.10
+    unlocks: []
+  exploration:
+    category: survival
+    base_xp_per_action:
+      explore: 5
+      move: 1
+    effects_per_level:
+      speed_multiplier: 0.98
+    unlocks: []
+  mining:
+    category: labor
+    base_xp_per_action:
+      mine: 6
+    effects_per_level:
+      speed_multiplier: 0.93
+    unlocks: []
+  farming:
+    category: labor
+    base_xp_per_action:
+      farm: 4
+    effects_per_level:
+      speed_multiplier: 0.95
+    unlocks: []

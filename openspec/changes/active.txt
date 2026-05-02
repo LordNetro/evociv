@@ -1,0 +1,9 @@
+# Active Changes
+#
+# This file lists currently active changes under openspec/changes/.
+# A change is "active" when it has been proposed and is in some phase
+# of the SDD cycle (design, spec, tasks, apply, verify).
+#
+# To activate a change, add it here. When archived, remove it.
+# Format: one change name per line, lines starting with # are comments.
+

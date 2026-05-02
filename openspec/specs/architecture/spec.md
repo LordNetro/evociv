@@ -187,3 +187,40 @@ The FSM SHALL have 6 states via `match/case`: IDLE, MOVING, EXECUTING, EVALUATE,
 - GIVEN an agent with strength=60
 - WHEN `get_action_duration(MINE, agent)` is called
 - THEN duration = max(2, 8 - 60/10) = max(2, 2) = 2 ticks
+
+#### R18 — Skill and Status Effect Engine Integration
+
+The tick loop (`_tick()`) MUST call `StatusEffectManager.process_tick(agent)` for each agent after `_process_needs()` (step 1) and before FSM execution (step 2). The `_fsm_executing()` post-completion hook MUST call `SkillManager.award_xp(agent, action_type)` after the action handler completes with `success=True`. The `_fsm_llm_waiting()` MUST check the poison fallback condition — if the agent has `"poisoned"` active AND `health < 50`, the agent MUST override the LLM plan and transition to executing REST or HEAL.
+
+(Previously: no skill or status effect processing existed in the engine loop.)
+
+##### Scenario: Tick order preserved
+- GIVEN the tick loop at step 1.5
+- WHEN _tick() runs
+- THEN status effects are processed AFTER need decays but BEFORE FSM execution
+
+##### Scenario: XP awarded on action completion
+- GIVEN an agent completing a CHOP action in _fsm_executing()
+- WHEN the handler returns success=True
+- THEN SkillManager.award_xp(agent, ActionType.CHOP) is called before advancing the plan
+
+#### R19 — Emotion Engine Integration
+
+The tick loop (`_tick()`) MUST call `EmotionManager.process_tick(agent, tick)` for each agent after `StatusEffectManager.process_tick()` (step 1.5) and before FSM execution (step 2). Action completion in `_fsm_executing()` MUST trigger emotion events: `on_skill_up` after XP award, `on_eat` after EAT, `on_rest` after REST, `on_build_complete` after BUILD, `on_win_combat` and `on_lose_combat` after ATTACK that kills target. Resource discovery MUST trigger `on_discovery`. Socialization MUST trigger `on_socialize` (in conversation manager). Emotion modifiers compose multiplicatively with skill and status effect modifiers in `get_action_duration()` and combat damage calculations.
+
+(Previously: no emotion processing existed in the engine loop.)
+
+##### Scenario: Emotion tick runs in correct order
+- GIVEN the simulation tick loop processing agents
+- WHEN the tick executes
+- THEN `StatusEffectManager.process_tick()` runs first, THEN `EmotionManager.process_tick()` for each agent, THEN FSM execution begins
+
+##### Scenario: Combat action triggers emotion
+- GIVEN an agent completing an ATTACK action against a hostile target
+- WHEN the action handler kills the target
+- THEN `EmotionManager.apply_trigger(agent, "on_win_combat")` is called
+
+##### Scenario: Eat action triggers emotion
+- GIVEN an agent completing an EAT action successfully
+- WHEN the action completes
+- THEN `EmotionManager.apply_trigger(agent, "on_eat")` is called

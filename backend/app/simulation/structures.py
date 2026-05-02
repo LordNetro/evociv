@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.definitions import DEFINITIONS
+
 
 @dataclass
 class Structure:
@@ -19,24 +21,17 @@ class Structure:
     properties: dict[str, Any] = field(default_factory=dict)
 
 
-# Resource costs to build each structure type
+# Module-level aliases derived from DEFINITIONS for backward compatibility
 STRUCTURE_COSTS: dict[str, dict[str, int]] = {
-    "workbench": {"wood": 10, "stone": 5},
-    "storage_hut": {"wood": 8, "stone": 4, "fiber": 2},
-    "house": {"wood": 15, "stone": 8, "fiber": 5},
-    "forge": {"wood": 12, "stone": 15, "iron_ore": 5},
-    "wall": {"wood": 5, "stone": 10},
-    "farm": {"wood": 5, "fiber": 3},
+    name: dict(s.costs) for name, s in DEFINITIONS.structures.items()
 }
-
-# Static properties for each structure type
 STRUCTURE_DEFINITIONS: dict[str, dict[str, Any]] = {
-    "workbench": {"health": 50, "passable": True},
-    "storage_hut": {"health": 80, "passable": True},
-    "house": {"health": 200, "passable": True},
-    "forge": {"health": 100, "passable": True},
-    "wall": {"health": 300, "passable": False},
-    "farm": {"health": 30, "passable": True},
+    name: {
+        "health": s.health,
+        "passable": s.passable,
+        **s.properties,
+    }
+    for name, s in DEFINITIONS.structures.items()
 }
 
 

@@ -8,6 +8,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from app.core.definitions import DEFINITIONS
+
 
 @dataclass
 class RelationshipData:
@@ -105,6 +107,18 @@ class Agent:
     # Exploration tracking
     explored_tiles: set[tuple[int, int]] = field(default_factory=set)
 
+    # Skill progression
+    skills: dict[str, int] = field(default_factory=dict)
+
+    # Status effects
+    active_effects: dict[str, dict] = field(default_factory=dict)
+
+    # Emotions (float intensity model)
+    emotions: dict[str, dict] = field(default_factory=dict)
+
+    # Map memory (tile vision tracking)
+    tile_memory: dict = field(default_factory=dict)
+
 
 class FSM:
     """Simple state machine for agent behaviour."""
@@ -159,48 +173,25 @@ class AgentFactory:
 
     @staticmethod
     def create_default_agents() -> list[Agent]:
-        """Create the 3 default agents: Zog, Mila, Kael."""
-        return [
-            Agent(
-                id="agent_001",
-                name="Zog",
-                position=(5.0, 5.0),
-                role="gatherer",
-                strength=60,
-                intelligence=40,
-                sociability=50,
-                speed=55,
-                sex="male",
-                age=0,
-                max_age=3500,
-            ),
-            Agent(
-                id="agent_002",
-                name="Mila",
-                position=(35.0, 30.0),
-                role="builder",
-                strength=70,
-                intelligence=55,
-                sociability=40,
-                speed=35,
-                sex="female",
-                age=0,
-                max_age=4000,
-            ),
-            Agent(
-                id="agent_003",
-                name="Kael",
-                position=(45.0, 10.0),
-                role="scout",
-                strength=45,
-                intelligence=60,
-                sociability=65,
-                speed=80,
-                sex="male",
-                age=0,
-                max_age=3000,
-            ),
-        ]
+        """Create default agents from DEFINITIONS.agent_defaults."""
+        agents: list[Agent] = []
+        for i, default in enumerate(DEFINITIONS.agent_defaults.agents):
+            agent = Agent(
+                id=f"agent_{i + 1:03d}",
+                name=default.name,
+                position=tuple(default.position),
+                role=default.role,
+                strength=default.strength,
+                intelligence=default.intelligence,
+                sociability=default.sociability,
+                speed=default.speed,
+                sex=default.sex,
+                age=default.age,
+                max_age=default.max_age,
+                equipment=dict(default.equipment),
+            )
+            agents.append(agent)
+        return agents
 
     @staticmethod
     def from_world_config(world_config: dict[str, Any]) -> list[Agent]:

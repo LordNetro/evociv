@@ -10,6 +10,7 @@ import uuid
 from typing import Optional
 
 from app.core.config import settings
+from app.core.definitions import DEFINITIONS
 from app.simulation.agent import Agent, FSM, RelationshipData
 from app.simulation.actions import (
     ActionType,
@@ -30,22 +31,27 @@ from app.simulation.faction import FactionManager
 from app.simulation.colony import ColonyStatsCollector
 from app.simulation.conversation import Message
 from app.simulation import roles as roles_module
+from app.simulation.skills import SkillManager
+from app.simulation.status_effects import StatusEffectManager
+from app.simulation.emotions import EmotionManager
+from app.simulation.map_memory import MapMemoryManager
 
 logger = logging.getLogger("evociv.engine")
 logger.setLevel(logging.INFO)
 
-# Constants
-HUNGER_DECAY = 0.04        # per tick
-THIRST_DECAY = 0.06       # per tick
-ENERGY_DECAY = 0.03       # per tick
-CRITICAL_HUNGER = 70       # hunger above this triggers instinct food seeking
-CRITICAL_THIRST = 70       # thirst above this triggers instinct water seeking
-CRITICAL_LLM_TRIGGER = 85  # only LLM trigger on critical (for higher-level plans)
-INTERACTION_RADIUS = 3.0  # tiles
-REPRODUCTION_COOLDOWN = 500  # ticks between reproductions
-MAX_POPULATION = 20
-INTERACTION_THRESHOLD = 5
-DECAY_INTERVAL = 100
+# Constants — loaded from DEFINITIONS for data-driven configuration
+_cfg = DEFINITIONS.simulation
+HUNGER_DECAY = _cfg.hunger_decay
+THIRST_DECAY = _cfg.thirst_decay
+ENERGY_DECAY = _cfg.energy_decay
+CRITICAL_HUNGER = _cfg.critical_hunger
+CRITICAL_THIRST = _cfg.critical_thirst
+CRITICAL_LLM_TRIGGER = _cfg.critical_llm_trigger
+INTERACTION_RADIUS = _cfg.interaction_radius
+REPRODUCTION_COOLDOWN = _cfg.reproduction_cooldown
+MAX_POPULATION = _cfg.max_population
+INTERACTION_THRESHOLD = _cfg.interaction_threshold
+DECAY_INTERVAL = _cfg.decay_interval
 
 
 class SimulationEngine:
@@ -156,6 +162,11 @@ class SimulationEngine:
         if hasattr(self.llm, "faction_manager") and getattr(self.llm, "faction_manager", None) is None:
             self.llm.faction_manager = self.faction_manager
         self.colony_stats_collector.record_birth()
+        # Emotion trigger for faction members
+        if agent.faction_id:
+            for other in self.agents:
+                if other.id != agent.id and other.faction_id == agent.faction_id:
+                    EmotionManager.apply_trigger(other, "on_faction_growth", self.tick_count)
         logger.info(f"Agent {agent.name} ({agent.id}) added to simulation")
         return agent.id
 
@@ -194,6 +205,21 @@ class SimulationEngine:
 
         # 1. Decay physical needs and check death
         await self._process_needs(tick)
+
+        # 1.5. Process status effects for all agents
+        for agent in self.agents:
+            StatusEffectManager.process_tick(agent)
+
+        # 1.6. Process emotion decay for all agents
+        for agent in self.agents:
+            EmotionManager.process_tick(agent, tick)
+
+        # 1.7. Advance time and weather
+        weather_changes = self.world.advance_time(self.agents, tick=tick)
+        if weather_changes.get("weather_changed"):
+            logger.info(
+                f"Weather changed: {weather_changes['previous']} → {weather_changes['current']}"
+            )
 
         # 1b. Update storage proximity flags
         for agent in self.agents:
@@ -292,6 +318,13 @@ class SimulationEngine:
                     tick,
                     ev.position,
                 )
+                EmotionManager.apply_trigger(agent, "on_discovery", tick)
+
+        # 7b. Update tile memory (vision) for all agents every tick
+        for agent in self.agents:
+            MapMemoryManager.update_vision(
+                agent, self.world, self.faction_manager, tick
+            )
 
         # 8. Collect all events
         all_events = events + self.event_queue.drain()
@@ -499,11 +532,15 @@ class SimulationEngine:
 
     async def _process_needs(self, tick: int) -> None:
         """Decay hunger/thirst/energy and check for deaths."""
+        # Apply night multipliers
+        night_thirst_mult = self.world.time.get_night_multiplier("thirst_decay_multiplier")
+        night_energy_mult = self.world.time.get_night_multiplier("energy_regen_multiplier")
+
         dead_agents: list[Agent] = []
         for agent in self.agents:
             agent.hunger = min(100.0, agent.hunger + HUNGER_DECAY)
-            agent.thirst = min(100.0, agent.thirst + THIRST_DECAY)
-            agent.energy = max(0.0, agent.energy - ENERGY_DECAY)
+            agent.thirst = min(100.0, agent.thirst + THIRST_DECAY * night_thirst_mult)
+            agent.energy = max(0.0, agent.energy - ENERGY_DECAY * night_energy_mult)
 
             # Starvation / dehydration damage
             if agent.hunger >= 100:
@@ -559,6 +596,12 @@ class SimulationEngine:
             self.colony_stats_collector.record_death()
             # F4: transfer inventory to faction
             self.faction_manager.transfer_inventory_on_death(agent)
+
+            # F4-R7: emotion trigger for faction members
+            if agent.faction_id:
+                for other in self.agents:
+                    if other.id != agent.id and other.faction_id == agent.faction_id:
+                        EmotionManager.apply_trigger(other, "on_faction_death", tick)
 
             # F3: orphan adoption
             for child in list(self.agents):
@@ -794,7 +837,7 @@ class SimulationEngine:
             if agent.energy < 30:
                 agent.current_action = "rest"
                 agent.current_action_emoji = "💤"
-                agent.action_duration = get_action_duration(ActionType.REST, agent)
+                agent.action_duration = get_action_duration(ActionType.REST, agent, self.world)
                 agent.action_progress = 0.0
                 fsm.transition_to("executing")
                 return True
@@ -804,7 +847,7 @@ class SimulationEngine:
                     if (x, y) not in agent.explored_tiles:
                         agent.current_action = "explore"
                         agent.current_action_emoji = "🧭"
-                        agent.action_duration = get_action_duration(ActionType.EXPLORE, agent)
+                        agent.action_duration = get_action_duration(ActionType.EXPLORE, agent, self.world)
                         agent.action_progress = 0.0
                         fsm.transition_to("executing")
                         return True
@@ -818,7 +861,7 @@ class SimulationEngine:
                         if tile.resource_type in ("stone", "iron_ore") and tile.amount > 0:
                             agent.current_action = "mine"
                             agent.current_action_emoji = "⛏️"
-                            agent.action_duration = get_action_duration(ActionType.MINE, agent)
+                            agent.action_duration = get_action_duration(ActionType.MINE, agent, self.world)
                             agent.action_progress = 0.0
                             fsm.transition_to("executing")
                             return True
@@ -845,7 +888,7 @@ class SimulationEngine:
                     if tile.resource_type is None and not tile.blocked and self.world.structures.get_structure_at((cx, cy)) is None:
                         agent.current_action = "build"
                         agent.current_action_emoji = "🔧"
-                        agent.action_duration = get_action_duration(ActionType.BUILD, agent)
+                        agent.action_duration = get_action_duration(ActionType.BUILD, agent, self.world)
                         agent.action_progress = 0.0
                         fsm.transition_to("executing")
                         return True
@@ -896,7 +939,7 @@ class SimulationEngine:
         if agent.energy < 30:
             agent.current_action = "rest"
             agent.current_action_emoji = "💤"
-            agent.action_duration = get_action_duration(ActionType.REST, agent)
+            agent.action_duration = get_action_duration(ActionType.REST, agent, self.world)
             agent.action_progress = 0.0
             fsm.transition_to("executing")
             return
@@ -940,11 +983,11 @@ class SimulationEngine:
                     partner._is_reproducing = True
                     agent.current_action = "reproduce"
                     agent.current_action_emoji = "❤️"
-                    agent.action_duration = get_action_duration(ActionType.REPRODUCE, agent)
+                    agent.action_duration = get_action_duration(ActionType.REPRODUCE, agent, self.world)
                     agent.action_progress = 0.0
                     partner.current_action = "reproduce"
                     partner.current_action_emoji = "❤️"
-                    partner.action_duration = get_action_duration(ActionType.REPRODUCE, partner)
+                    partner.action_duration = get_action_duration(ActionType.REPRODUCE, partner, self.world)
                     partner.action_progress = 0.0
                     agent._reproduce_partner_id = partner.id
                     partner._reproduce_partner_id = agent.id
@@ -980,7 +1023,7 @@ class SimulationEngine:
             action_type = ActionType(step["action"])
             agent.current_action = step["action"]
             agent.current_action_emoji = ACTION_EMOJIS.get(action_type, "❓")
-            duration = get_action_duration(action_type, agent)
+            duration = get_action_duration(action_type, agent, self.world)
             agent.action_duration = duration
             agent.action_progress = 0.0
 
@@ -1017,6 +1060,39 @@ class SimulationEngine:
         food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
         water_nearby = [r for r in nearby if r[2] == "water"]
 
+        # ── 0.5 Shelter-seeking: if weather is extreme and exposed ──
+        weather_def = DEFINITIONS.weather.get(self.world.weather.current_weather)
+        if weather_def and weather_def.category in ("extreme", "fog"):
+            # Check if agent has nearby shelter
+            ax, ay = int(agent.position[0]), int(agent.position[1])
+            has_shelter = False
+            best_shelter_pos = None
+            best_shelter_dist = float("inf")
+            for struct in self.world.structures.list_all():
+                struct_def = DEFINITIONS.structures.get(struct.structure_type)
+                if struct_def and struct_def.shelter_protection > 0:
+                    sx, sy = struct.position
+                    dist = max(abs(sx - ax), abs(sy - ay))
+                    if dist <= 3:
+                        has_shelter = True
+                        break
+                    if dist < best_shelter_dist:
+                        best_shelter_dist = dist
+                        best_shelter_pos = (sx, sy)
+            if not has_shelter and best_shelter_pos is not None:
+                # Move toward nearest shelter
+                agent.current_action = "seeking_shelter"
+                agent.current_action_emoji = "🏠"
+                agent.target_position = (float(best_shelter_pos[0]), float(best_shelter_pos[1]))
+                agent.move_path = self.world.find_path(
+                    (int(agent.position[0]), int(agent.position[1])),
+                    (int(best_shelter_pos[0]), int(best_shelter_pos[1])),
+                )
+                if agent.move_path:
+                    agent.move_progress = 0.0
+                    fsm.transition_to("moving")
+                    return
+
         # ── 0. Feed child if caregiver and child is critical ──
         if not agent.is_child and agent.inventory.get("berries", 0) > 0:
             for child in self.agents:
@@ -1029,7 +1105,7 @@ class SimulationEngine:
                         if child.hunger > 70:
                             agent.current_action = "feed_child"
                             agent.current_action_emoji = "🍼"
-                            agent.action_duration = get_action_duration(ActionType.FEED_CHILD, agent)
+                            agent.action_duration = get_action_duration(ActionType.FEED_CHILD, agent, self.world)
                             agent.action_progress = 0.0
                             agent.active_plan = {
                                 "steps": [{"action": "feed_child", "target": None, "child_id": child.id}]
@@ -1212,6 +1288,40 @@ class SimulationEngine:
                     fsm.transition_to("evaluate")
                     return
 
+                # Award XP on successful action completion
+                leveled_up = SkillManager.award_xp(agent, action_type.value)
+                for skill_name, new_level in leveled_up.items():
+                    self.event_queue.push(
+                        "skill_up",
+                        f"{agent.name} reached {skill_name} level {new_level}!",
+                        "warning",
+                        [agent.id],
+                        tick,
+                    )
+                    EmotionManager.apply_trigger(agent, "on_skill_up", tick)
+
+                # Emotion triggers for specific action completions
+                if action_type == ActionType.EAT:
+                    EmotionManager.apply_trigger(agent, "on_eat", tick)
+                elif action_type == ActionType.REST:
+                    EmotionManager.apply_trigger(agent, "on_rest", tick)
+                elif action_type == ActionType.BUILD:
+                    EmotionManager.apply_trigger(agent, "on_build_complete", tick)
+                elif action_type == ActionType.ATTACK:
+                    # Check if attack killed the target
+                    target_health = result.state_changes.get("target_health", 100)
+                    if target_health <= 0:
+                        EmotionManager.apply_trigger(agent, "on_win_combat", tick)
+                        target_id = step.get("target_agent") if step else None
+                        if target_id:
+                            target_agent = next(
+                                (a for a in self.agents if a.id == target_id), None
+                            )
+                            if target_agent:
+                                EmotionManager.apply_trigger(
+                                    target_agent, "on_lose_combat", tick
+                                )
+
             # Handle special actions (not in registry)
             if action_type == ActionType.REPRODUCE:
                 partner_id = getattr(agent, '_reproduce_partner_id', None)
@@ -1225,6 +1335,15 @@ class SimulationEngine:
                         birth_ev.type, birth_ev.description, birth_ev.severity,
                         birth_ev.agent_ids, tick, birth_ev.position, birth_ev.metadata,
                     )
+                    # Emotion trigger for nearby agents
+                    for other in self.agents:
+                        if other.id not in (agent.id, partner.id, child.id):
+                            dist = math.hypot(
+                                other.position[0] - child.position[0],
+                                other.position[1] - child.position[1],
+                            )
+                            if dist <= INTERACTION_RADIUS * 2:
+                                EmotionManager.apply_trigger(other, "on_child_birth", tick)
                 # Clean up
                 for a in [agent, partner]:
                     if a:
@@ -1323,6 +1442,24 @@ class SimulationEngine:
             agent.current_action_emoji = "⏳"
             self.builder.mark_agent_dirty(agent.id)
 
+            # Poison instinct: if poisoned and health < 50%, prioritize rest/heal
+            from app.simulation.status_effects import StatusEffectManager as _sem
+            if _sem.has_effect(agent, "poisoned") and agent.health < 50:
+                if agent.inventory.get("berries", 0) > 0:
+                    agent.current_action = "heal"
+                    agent.current_action_emoji = "💊"
+                    agent.action_duration = 5
+                    agent.action_progress = 0.0
+                    fsm.transition_to("executing")
+                    return
+                else:
+                    agent.current_action = "rest"
+                    agent.current_action_emoji = "💤"
+                    agent.action_duration = get_action_duration(ActionType.REST, agent, self.world)
+                    agent.action_progress = 0.0
+                    fsm.transition_to("executing")
+                    return
+
             # Instinct: if hungry, eat from inventory first
             if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
                 agent.current_action = "eat"
@@ -1334,7 +1471,7 @@ class SimulationEngine:
             elif agent.energy < 30:
                 agent.current_action = "rest"
                 agent.current_action_emoji = "💤"
-                agent.action_duration = get_action_duration(ActionType.REST, agent)
+                agent.action_duration = get_action_duration(ActionType.REST, agent, self.world)
                 agent.action_progress = 0.0
                 fsm.transition_to("executing")
             # Otherwise move toward nearest resource

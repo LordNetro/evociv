@@ -58,7 +58,7 @@ Extends the core simulation with a full social simulation layer: relationships, 
 | F4-R4 | The WebSocket snapshot MUST include faction information: each faction's id, name, color, member count, and total shared resources. | MUST |
 | F4-R5 | The frontend canvas MUST render agents with their faction's `color` as a border or overlay when the agent belongs to a faction. | MUST |
 | F4-R6 | When an agent's FSM evaluates trade requests (F5), same-faction agents MUST be preferred (higher acceptance probability in the LLM prompt context). | MUST |
-| F4-R7 | When a faction member dies, their personal inventory MUST be transferred to the faction's `shared_resources`. | MUST |
+| F4-R7 | When a faction member dies, their personal inventory MUST be transferred to the faction's `shared_resources`. Additionally, all faction members MUST receive `sad` and `angry` emotion triggers via `EmotionManager.apply_trigger(survivor, "on_faction_death")`. | MUST |
 
 **F5 — Trading**
 
@@ -83,7 +83,7 @@ Extends the core simulation with a full social simulation layer: relationships, 
 | F6-R4 | On each tick, an agent in IDLE state with non-empty `conversation_queue` MUST process the next message in its LLM prompt. The LLM decides how to respond (reply, share knowledge, ignore, propose trade, etc.). After the LLM produces a response, consumed `dialogue` and `greeting` messages MUST be removed from the queue. The prompt MUST include the response guidance (F6-R15) and formatted social context with sender names (F6-R16). | MUST |
 | F6-R5 | Agents MAY share knowledge from their `knowledge` store (F2) through conversation. When an agent shares a known property, the receiving agent's `knowledge` store MUST be updated. | MUST |
 | F6-R6 | Each successful conversation interaction MUST increment the `interaction_count` for both participants, feeding into F8's relationship system. | MUST |
-| F6-R7 | All conversation events MUST be recorded as SimEvents. `"socialize"` events cover proximity encounters (unchanged). `"dialogue"` events cover LLM-produced speech and thoughts (new). | MUST |
+| F6-R7 | All conversation events MUST be recorded as SimEvents. `"socialize"` events cover proximity encounters (unchanged). `"dialogue"` events cover LLM-produced speech and thoughts (new). Additionally, successful SOCIALIZE interactions MUST trigger `happy` and `calm` emotion events for both participants via `EmotionManager.apply_trigger(agent, "on_socialize")`. | MUST |
 | F6-R8 | To prevent tick-loop spam, a maximum of 5 conversation pairs per tick MUST be processed. Additional pending pairs are deferred to the next tick. | MUST |
 | F6-R9 | The LLM JSON response format MUST support an optional `say_to` field with structure `{"agent_id": str, "text": str}`. The engine MUST extract this field when polling completed LLM futures: it MUST set `current_dialogue` and `dialogue_type` on the source agent, and enqueue a `Message` with `sender_name`, `sender_id`, and `content={"type": "dialogue", "text": "..."}` in the destination agent's `conversation_queue`. After enqueuing, the engine MUST consume the handled dialogue/greeting messages from the source agent's queue. | MUST |
 | F6-R10 | When the engine processes an LLM response that includes `think_aloud`, it MUST set `agent.current_dialogue` to the `think_aloud` text and `agent.dialogue_type` to `"thought"`, in addition to populating the existing `last_thought` field. | MUST |
@@ -187,6 +187,7 @@ Extends the core simulation with a full social simulation layer: relationships, 
 
 - GIVEN a faction with `color="#FF0000"` WHEN a member agent is rendered in the frontend canvas THEN the agent has a red border/overlay
 - GIVEN a faction member dies WHEN death is processed THEN the agent's inventory is transferred to the faction's `shared_resources`
+- GIVEN a faction member dies WHEN death is processed THEN `EmotionManager.apply_trigger(survivor, "on_faction_death")` is called for each surviving member
 - GIVEN two agents in the same faction WHEN one proposes a trade THEN the LLM prompt includes context that they are faction allies, increasing acceptance likelihood
 - GIVEN a faction with 3 members WHEN queried via GET /api/factions THEN the response includes id, name, color, member_count=3, and shared_resources
 
@@ -199,7 +200,7 @@ Extends the core simulation with a full social simulation layer: relationships, 
 
 **F6 — Socialization and Conversations**
 
-- GIVEN two agents within distance ≤ 3 tiles WHEN the proximity check runs THEN a `Message` is enqueued in both agents' `conversation_queue`
+- GIVEN two agents within distance ≤ 3 tiles WHEN the proximity check runs THEN a `Message` is enqueued in both agents' `conversation_queue` AND `EmotionManager.apply_trigger(a1, "on_socialize")` and `EmotionManager.apply_trigger(a2, "on_socialize")` are called
 - GIVEN an agent in IDLE state with `conversation_queue` containing 3 messages WHEN the FSM ticks THEN the agent processes the oldest message, the LLM receives the message context and produces a response plan, and consumed messages are removed from the queue afterwards
 - GIVEN Agent A shares knowledge about `POISONOUS_BERRY` via a conversation message WHEN Agent B processes the message THEN Agent B's `knowledge` store is updated with the shared information
 - GIVEN a conversation event WHEN it occurs THEN a SimEvent with type `"socialize"` is logged containing both agent IDs and message summary

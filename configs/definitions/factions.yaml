@@ -1,0 +1,15 @@
+# Factions definition file.
+# Mirrors faction.py _create_defaults().
+
+factions:
+  River Clan:
+    name: River Clan
+    color: "#00AAFF"
+
+  Stone Hold:
+    name: Stone Hold
+    color: "#FF8800"
+
+  Green Ward:
+    name: Green Ward
+    color: "#44BB44"

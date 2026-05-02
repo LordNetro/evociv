@@ -21,7 +21,7 @@ Define data-driven role definitions that determine agent behavior: action priori
 | R2 | The `action_priorities` table per role MUST determine the evaluation order in the agent's FSM. Higher-priority items are checked first regardless of need thresholds. | MUST |
 | R3 | Each role's `allowed_actions` list MUST restrict which ActionTypes the agent can execute. Actions not in the list MUST be rejected at the FSM level before the handler is called. | MUST |
 | R4 | Role `base_attributes` MUST apply stat modifiers on agent creation (e.g., `gatherer: +10 speed`, `fighter: +10 strength`, `builder: +10 intelligence`). | MUST |
-| R5 | The Agent dataclass MUST gain a `role_data: dict` field that caches the resolved role definition for the current tick to avoid repeated lookups. | MUST |
+| R5 | The Agent dataclass MUST gain a `role_data: dict` field that caches the resolved role definition for the current tick to avoid repeated lookups, an `emotions: dict[str, dict]` field (default empty dict) for emotion/morale state tracking. | MUST |
 | R6 | The LLM prompt MUST include the agent's role description, allowed actions, and role-specific behavioral guidance (e.g., "As a fighter, you prefer direct confrontation"). | MUST |
 | R7 | The factory MUST support role assignment via config dict. If no role is specified, `gatherer` is the default. | MUST |
 | R8 | Default roles MUST include: `gatherer`, `hunter`, `fisher`, `farmer`, `miner`, `builder`, `crafter`, `scout`, `fighter`, `healer`. Each with distinct priority tables and allowed actions. | MUST |
@@ -97,6 +97,22 @@ Priorities: HEAL > GATHER (herbs) > MOVE > REST > LLM
 Allowed actions: MOVE, HEAL, GATHER, EAT, DRINK, REST, SOCIALIZE, TRADE, CRAFT
 
 Base: intelligence +10, sociability +10
+
+#### R9 — Agent Skills, Status Effects, and Emotions
+
+The Agent dataclass MUST be extended with `skills: dict[str, int]` (default empty), `active_effects: dict[str, dict]` (default empty), and `emotions: dict[str, dict]` (default empty). The WebSocket snapshot MUST include all three fields. The AgentState schema MUST be updated accordingly.
+
+(Previously: Agent had no skills or active_effects fields.)
+
+##### Scenario: New agent fields initialized
+- GIVEN a new Agent created via AgentFactory.from_config()
+- WHEN the agent is initialized
+- THEN agent.skills == {} AND agent.active_effects == {} AND agent.emotions == {}
+
+##### Scenario: Snapshot includes fields
+- GIVEN an agent with skills={"combat": 3}, active_effects={"poisoned": {...}}, and emotions={"happy": {"intensity": 0.7, "last_trigger_tick": 42}}
+- WHEN WorldSnapshotBuilder.build() is called
+- THEN the resulting AgentState includes `skills`, `active_effects`, and `emotions`
 
 #### Scenarios
 

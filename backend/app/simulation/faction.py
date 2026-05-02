@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
+from app.core.definitions import DEFINITIONS
 from app.simulation.agent import Agent
 
 
@@ -24,19 +25,19 @@ class Faction:
     color: str  # hex, e.g. "#FF0000"
     member_ids: list[str] = field(default_factory=list)
     shared_resources: dict[str, int] = field(default_factory=dict)
+    shared_tile_memory: dict = field(default_factory=dict)
+    tile_reported_by: dict = field(default_factory=dict)
 
 
 class FactionManager:
     def __init__(self) -> None:
         self.factions: dict[str, Faction] = {}
-        self._create_defaults()
+        self._create_from_definitions()
 
-    def _create_defaults(self) -> None:
-        """Create default factions if none exist."""
-        if not self.factions:
-            self.create("River Clan", "#00AAFF")
-            self.create("Stone Hold", "#FF8800")
-            self.create("Green Ward", "#44BB44")
+    def _create_from_definitions(self) -> None:
+        """Create factions from DEFINITIONS.factions."""
+        for name, faction_def in DEFINITIONS.factions.items():
+            self.create(name, faction_def.color)
 
     def create(self, name: str, color: str) -> Faction:
         """Create a new faction."""

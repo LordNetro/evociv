@@ -31,14 +31,14 @@
 	let { resources, onHarvest }: Props = $props();
 
 	const RESOURCE_GEO = {
-		tree_trunk: new CylinderGeometry(0.08, 0.1, 0.3),
-		tree_canopy: new ConeGeometry(0.4, 0.8),
-		berry: new SphereGeometry(0.2),
-		stone: new BoxGeometry(0.35, 0.25, 0.35),
-		iron_ore: new DodecahedronGeometry(0.18),
-		clay: new SphereGeometry(0.15),
-		sand: new BoxGeometry(0.3, 0.15, 0.3),
-		fiber: new CylinderGeometry(0.03, 0.03, 0.4)
+		tree_trunk: new CylinderGeometry(0.15, 0.2, 0.5),
+		tree_canopy: new ConeGeometry(0.6, 1.2),
+		berry: new SphereGeometry(0.25),
+		stone: new BoxGeometry(0.45, 0.35, 0.45),
+		iron_ore: new DodecahedronGeometry(0.25),
+		clay: new SphereGeometry(0.2),
+		sand: new BoxGeometry(0.4, 0.2, 0.4),
+		fiber: new CylinderGeometry(0.05, 0.05, 0.5)
 	};
 
 	const RESOURCE_COLORS: Record<string, string> = {
@@ -149,16 +149,15 @@
 		mesh.frustumCulled = false;
 	}
 
-	// Trunk at y=0.25 (matches original: group y=0.1 + mesh y=0.15)
-	// Canopy at y=0.6 (matches original: group y=0.1 + mesh y=0.5)
+	// Resource Y positions (centered on ground plane at y=0)
 	$effect(() => updateInstancedMesh(treeTrunkRef, trees, 0.25));
-	$effect(() => updateInstancedMesh(treeCanopyRef, trees, 0.6));
-	$effect(() => updateInstancedMesh(berryRef, berries, 0.2));
-	$effect(() => updateInstancedMesh(stoneRef, stones, 0.2));
-	$effect(() => updateInstancedMesh(ironOreRef, ironOres, 0.18));
-	$effect(() => updateInstancedMesh(clayRef, clays, 0.15));
+	$effect(() => updateInstancedMesh(treeCanopyRef, trees, 0.9));
+	$effect(() => updateInstancedMesh(berryRef, berries, 0.25));
+	$effect(() => updateInstancedMesh(stoneRef, stones, 0.25));
+	$effect(() => updateInstancedMesh(ironOreRef, ironOres, 0.25));
+	$effect(() => updateInstancedMesh(clayRef, clays, 0.2));
 	$effect(() => updateInstancedMesh(sandRef, sands, 0.15));
-	$effect(() => updateInstancedMesh(fiberRef, fibers, 0.25));
+	$effect(() => updateInstancedMesh(fiberRef, fibers, 0.3));
 
 	function handleResourceClick(type: string, instanceId: number) {
 		const arr = resourceArrays[type as keyof typeof resourceArrays]();

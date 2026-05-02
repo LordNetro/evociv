@@ -6,6 +6,7 @@
 	import Agents3D from '$lib/canvas3d/Agents3D.svelte';
 	import AgentLabel from '$lib/canvas3d/AgentLabel.svelte';
 	import SelectionHighlight from '$lib/canvas3d/SelectionHighlight.svelte';
+	import HarvestEffect from '$lib/canvas3d/HarvestEffect.svelte';
 	import { simulationStore } from '$lib/stores/simulationStore.svelte.js';
 
 	interface TileData {
@@ -43,18 +44,30 @@
 	);
 	let agents = $derived(snapshot.agents ?? {});
 	let factions = $derived(snapshot.factions ?? {});
+
+	let harvestBursts = $state<{ id: number; x: number; y: number; type: string }[]>([]);
+	let nextBurstId = 0;
+
+	function handleHarvest(x: number, y: number, type: string) {
+		harvestBursts = [...harvestBursts, { x, y, type, id: nextBurstId++ }];
+	}
+
+	function removeBurst(id: number) {
+		harvestBursts = harvestBursts.filter((b) => b.id !== id);
+	}
 </script>
 
 <div class="scene-wrapper">
 	<Scene>
 		<Grid3D {tiles} />
 		<WaterPlane {waterTiles} />
-		<Resources3D resources={resourceTiles} />
+		<Resources3D resources={resourceTiles} onHarvest={handleHarvest} />
 		<Agents3D {agents} {factions} />
 		{#each Object.entries(agents) as [id, agent] (id)}
 			<AgentLabel agent={{ ...agent, id }} />
 		{/each}
 		<SelectionHighlight />
+		<HarvestEffect bursts={harvestBursts} onComplete={removeBurst} />
 	</Scene>
 </div>
 

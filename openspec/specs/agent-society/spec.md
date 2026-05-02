@@ -2,6 +2,7 @@
 
 > Consolidated spec — synced from delta `openspec/changes/agent-society/specs/agent-society/spec.md`
 > Archive: `openspec/changes/archive/agent-society/archive-report.md`
+> Delta applied: `openspec/changes/agent-conversations-v2/specs/agent-society/spec.md` (2026-05-01)
 
 ## Capabilities
 
@@ -72,21 +73,29 @@ Extends the core simulation with a full social simulation layer: relationships, 
 
 **F6 — Socialization and Conversations**
 
+> Synced from delta `openspec/changes/agent-conversations-v2/specs/agent-society/spec.md`
+
 | # | Requirement | Strength |
 |---|-------------|----------|
 | F6-R1 | A new `SOCIALIZE` action type MUST be added. The action is triggered automatically when two agents are within interaction radius (≤ 3 tiles). | MUST |
-| F6-R2 | Each agent MUST have a `conversation_queue: list[Message]` (FIFO, max 50 messages). Each `Message` contains: `sender_id`, `content` (structured dict), and `tick`. | MUST |
+| F6-R2 | Each agent MUST have a `conversation_queue: list[Message]` (FIFO, max 50 messages). Each `Message` MUST contain: `sender_id` (str), `sender_name` (str), `content` (structured dict), and `tick` (int). The `sender_name` field SHALL hold the sending agent's human-readable name. | MUST |
 | F6-R3 | When a proximity encounter is detected, a `Message` is enqueued in both agents' queues. The message content describes the encounter (e.g., `{"type": "greeting", "agent_name": "Alice"}`). | MUST |
-| F6-R4 | On each tick, an agent in IDLE state with non-empty `conversation_queue` MUST process the next message in its LLM prompt. The LLM decides how to respond (reply, share knowledge, ignore, propose trade, etc.). | MUST |
+| F6-R4 | On each tick, an agent in IDLE state with non-empty `conversation_queue` MUST process the next message in its LLM prompt. The LLM decides how to respond (reply, share knowledge, ignore, propose trade, etc.). After the LLM produces a response, consumed `dialogue` and `greeting` messages MUST be removed from the queue. The prompt MUST include the response guidance (F6-R15) and formatted social context with sender names (F6-R16). | MUST |
 | F6-R5 | Agents MAY share knowledge from their `knowledge` store (F2) through conversation. When an agent shares a known property, the receiving agent's `knowledge` store MUST be updated. | MUST |
 | F6-R6 | Each successful conversation interaction MUST increment the `interaction_count` for both participants, feeding into F8's relationship system. | MUST |
 | F6-R7 | All conversation events MUST be recorded as SimEvents. `"socialize"` events cover proximity encounters (unchanged). `"dialogue"` events cover LLM-produced speech and thoughts (new). | MUST |
 | F6-R8 | To prevent tick-loop spam, a maximum of 5 conversation pairs per tick MUST be processed. Additional pending pairs are deferred to the next tick. | MUST |
-| F6-R9 | The LLM JSON response format MUST support an optional `say_to` field with structure `{"agent_id": str, "text": str}`. The engine MUST extract this field when polling completed LLM futures: it MUST set `current_dialogue` and `dialogue_type` on the source agent, and enqueue a `Message` with `content={"type": "dialogue", "text": "..."}` in the destination agent's `conversation_queue`. | MUST |
+| F6-R9 | The LLM JSON response format MUST support an optional `say_to` field with structure `{"agent_id": str, "text": str}`. The engine MUST extract this field when polling completed LLM futures: it MUST set `current_dialogue` and `dialogue_type` on the source agent, and enqueue a `Message` with `sender_name`, `sender_id`, and `content={"type": "dialogue", "text": "..."}` in the destination agent's `conversation_queue`. After enqueuing, the engine MUST consume the handled dialogue/greeting messages from the source agent's queue. | MUST |
 | F6-R10 | When the engine processes an LLM response that includes `think_aloud`, it MUST set `agent.current_dialogue` to the `think_aloud` text and `agent.dialogue_type` to `"thought"`, in addition to populating the existing `last_thought` field. | MUST |
 | F6-R11 | The engine MUST emit a `SimEvent` with `type="dialogue"` when processing an LLM response that produces a `say_to` or `think_aloud` with non-null text. The existing `"socialize"` event type for proximity encounters is unchanged. | MUST |
 | F6-R12 | The `Agent` dataclass MUST gain `current_dialogue: str | None` and `dialogue_type: Literal["speech", "thought"] | None`, both defaulting to `None`. The `AgentState` Pydantic model MUST mirror these fields. The snapshot builder MUST map `Agent` dialogue fields to the `AgentState` for every snapshot tick. | MUST |
-| F6-R13 | The `JSON_FORMAT_INSTRUCTION` in the LLM prompt MUST include the `say_to` field in the JSON schema alongside the existing `think_aloud`. | MUST |
+| F6-R13 | The `JSON_FORMAT_INSTRUCTION` in the LLM prompt MUST include the `say_to` field in the JSON schema alongside `think_aloud`, AND MUST include additional guidance text instructing the LLM to respond to received messages. The guidance text SHOULD mention considering the relationship with the sender. | MUST |
+| F6-R14 | After an LLM response with a `say_to` is fully processed, the engine MUST consume (remove) `dialogue` and `greeting` type messages from the source agent's `conversation_queue` that were provided as context for the LLM prompt. `trade_proposal` messages SHALL NOT be consumed by this mechanism — they have their own processing pipeline via `_process_trade_proposals`. | MUST |
+| F6-R15 | The `JSON_FORMAT_INSTRUCTION` SHALL include guidance directing the LLM to respond to received messages. The `say_to` field description SHALL be updated to mention responding. A new paragraph SHALL be added: "If someone said something to you, respond based on your relationship. Consider their message and your current needs when crafting a reply." | MUST |
+| F6-R16 | The SOCIAL CONTEXT section in the LLM prompt SHALL format each pending message as readable text: `- From {sender_name}: {message_type}: {text}` instead of a raw Python dict. The `Message` dataclass SHALL have a `sender_name: str` field. The `_process_say_to` method SHALL populate `sender_name` when enqueuing dialogue messages. | MUST |
+| F6-R17 | `RealLLMOrchestrator.build_prompt()` SHALL pass actual nearby friendly agents to `nearby_agents` instead of hardcoding `"none"`. Friendly agents are those within perception radius (5 tiles) who are NOT hostile (different faction). The formatted string SHALL include name, role, and distance. | MUST |
+| F6-R18 | The SOCIAL CONTEXT SHALL include the relationship score with the message sender when the agent has an existing relationship entry. Format: `- From {name}: {type} (relationship: {score:.1f})`. If no relationship exists, append `(relationship: neutral)`. | MUST |
+| F6-R19 | The engine SHALL process `share_knowledge` messages from agents' `conversation_queue` each tick, before trade proposals. When found, the receiving agent's `knowledge` store SHALL be updated with the shared subtype and properties, the message SHALL be consumed (removed), and a `knowledge_shared` SimEvent SHALL be emitted. | MUST |
 
 **F7 — Colony Information Panel**
 
@@ -191,18 +200,33 @@ Extends the core simulation with a full social simulation layer: relationships, 
 **F6 — Socialization and Conversations**
 
 - GIVEN two agents within distance ≤ 3 tiles WHEN the proximity check runs THEN a `Message` is enqueued in both agents' `conversation_queue`
-- GIVEN an agent in IDLE state with `conversation_queue` containing 3 messages WHEN the FSM ticks THEN the agent processes the oldest message, the LLM receives the message context and produces a response plan
+- GIVEN an agent in IDLE state with `conversation_queue` containing 3 messages WHEN the FSM ticks THEN the agent processes the oldest message, the LLM receives the message context and produces a response plan, and consumed messages are removed from the queue afterwards
 - GIVEN Agent A shares knowledge about `POISONOUS_BERRY` via a conversation message WHEN Agent B processes the message THEN Agent B's `knowledge` store is updated with the shared information
 - GIVEN a conversation event WHEN it occurs THEN a SimEvent with type `"socialize"` is logged containing both agent IDs and message summary
 - GIVEN more than 5 conversation pairs are pending in a single tick WHEN the tick processes social interactions THEN only 5 pairs are processed and the remainder are deferred to the next tick
-- GIVEN an LLM response for agent "Zog" with `"say_to": {"agent_id": "agent_002", "text": "Hello Mila!"}` WHEN the engine polls completed LLM futures THEN a `Message` with `content={"type": "dialogue", "text": "Hello Mila!"}` is enqueued in the destination agent's queue AND the source agent's `current_dialogue` is set to "Hello Mila!" with `dialogue_type="speech"`
-- GIVEN an LLM response without a `say_to` field WHEN the engine processes the response THEN no dialogue message is enqueued AND the source agent's `current_dialogue` SHOULD be cleared to `None`
+- GIVEN an LLM response for agent "Zog" with `"say_to": {"agent_id": "agent_002", "text": "Hello Mila!"}` WHEN the engine polls completed LLM futures THEN a `Message` with `sender_name`, `sender_id`, and `content={"type": "dialogue", "text": "Hello Mila!"}` is enqueued in the destination agent's queue AND the source agent's `current_dialogue` is set to "Hello Mila!" with `dialogue_type="speech"` AND the source agent's dialogue/greeting messages are consumed from its queue
+- GIVEN an LLM response without a `say_to` field WHEN the engine processes the response THEN no dialogue message is enqueued AND the source agent's `current_dialogue` SHOULD be cleared to `None` AND dialogue/greeting messages are still consumed from the queue
 - GIVEN an LLM response with `"think_aloud": "I should find water"` WHEN the engine processes the response THEN `agent.current_dialogue` is "I should find water" AND `agent.dialogue_type` is `"thought"` AND `agent.last_thought` is also set
 - GIVEN an LLM response with valid `say_to` WHEN the engine processes it THEN a `SimEvent` with `type="dialogue"` and description `"{sender} → {receiver}: {text}"` is emitted
 - GIVEN an LLM response with `think_aloud="I am tired"` WHEN the engine processes it THEN a `SimEvent` with `type="dialogue"` and description `"{name} thinks: I am tired"` is emitted
 - GIVEN a newly created Agent WHEN inspected THEN `current_dialogue` is `None` and `dialogue_type` is `None`
 - GIVEN an agent with `current_dialogue="Hello"` and `dialogue_type="speech"` WHEN a `WorldSnapshot` is built THEN the agent's `AgentState` in `snapshot.agents[agent_id]` includes `current_dialogue="Hello"` and `dialogue_type="speech"`
-- GIVEN the `JSON_FORMAT_INSTRUCTION` template WHEN the prompt is rendered THEN the JSON format includes `"say_to": {"agent_id": "target_id", "text": "what to say"}` as an optional field
+- GIVEN the `JSON_FORMAT_INSTRUCTION` template WHEN the prompt is rendered THEN the JSON format includes `"say_to": {"agent_id": "target_id", "text": "what to say"}` as an optional field AND a guidance paragraph instructing the LLM to respond to received messages
+- GIVEN a `Message` created with `sender_id="a1"`, `sender_name="Alice"`, `content={}` WHEN accessed THEN all fields are present and correct
+- GIVEN Agent B has a `dialogue` message from Alice ("Hello!") WHEN B enters `llm_trigger` state THEN the prompt includes the message and instructs B to respond
+- GIVEN B's LLM response includes `say_to` to Alice WHEN the response is processed THEN the consumed dialogue message is removed from B's queue
+- GIVEN Agent A has 2 `dialogue` messages and 1 `greeting` in its queue WHEN A's LLM response is processed containing a `say_to` THEN the 2 dialogue and 1 greeting messages are removed from A's queue
+- GIVEN an agent has a `trade_proposal` and a `dialogue` message WHEN LLM response is processed THEN only the `dialogue` is consumed; `trade_proposal` remains
+- GIVEN an agent with messages in `conversation_queue` WHEN the prompt is built THEN `JSON_FORMAT_INSTRUCTION` includes text instructing the LLM to respond to received messages
+- GIVEN an agent with no messages WHEN the prompt is built THEN the response guidance is still present but the LLM may choose not to use `say_to`
+- GIVEN Agent B has a `dialogue` message from Alice with text "Hello!" WHEN B's prompt is built THEN SOCIAL CONTEXT includes `- From Alice: dialogue: Hello!`
+- GIVEN Agent B has a `greeting` message from Bob WHEN B's prompt is built THEN SOCIAL CONTEXT includes `- From Bob: greeting: greeted you`
+- GIVEN Alice (gatherer) at (5,5) and Bob (builder) at (7,5) WHEN RealLLMOrchestrator builds Alice's prompt THEN NEARBY AGENTS includes "Bob (builder) at distance 2"
+- GIVEN Alice is alone (no agents within 5 tiles) WHEN her prompt is built THEN NEARBY AGENTS shows "(none)"
+- GIVEN Agent A has relationship score 0.8 with Agent B WHEN A's prompt shows B's message THEN `(relationship: 0.8)` appears in the social context line
+- GIVEN Agent A has no relationship with Agent C WHEN A's prompt shows C's message THEN `(relationship: neutral)` appears
+- GIVEN Agent B has a `share_knowledge` message for POISONOUS_BERRY with `{"is_poisonous": true}` WHEN the engine processes the queue THEN B's `knowledge["POISONOUS_BERRY"]["is_poisonous"]` is True AND the message is removed from B's queue
+- GIVEN a `share_knowledge` message is processed WHEN the event queue is drained THEN a SimEvent with type `knowledge_shared` is present
 
 **F7 — Colony Information Panel**
 
@@ -256,7 +280,7 @@ Extends the core simulation with a full social simulation layer: relationships, 
 - [x] **F3**: Newborn agents are born adjacent to parent with `is_child=True`. Children cannot EAT/DRINK independently — the caregiver's FSM triggers FEED_CHILD. Stats are inherited with random offset. Children mature at `maturity_age` ticks. Orphaned children are adopted by nearest adult or die if none exists.
 - [x] **F4**: Faction CRUD works. Agents show faction color in the canvas. Agent death transfers inventory to faction shared pool. Same-faction members get trade preference via LLM context.
 - [x] **F5**: TRADE action works between nearby agents. Proposer specifies offer/request. Target LLM evaluates and accepts/rejects. Accepted trades execute atomically. Rejected trades log without inventory changes. Successful trades increment interaction counts.
-- [x] **F6**: Proximity-based conversations trigger automatically. Messages are enqueued FIFO (max 50). LLM processes messages during the next planning cycle. Knowledge is shared via conversation messages. Interaction counts increment. Events are logged. Cap of 5 conversation pairs per tick enforced.
+- [x] **F6**: Proximity-based conversations trigger automatically. Messages are enqueued FIFO (max 50) with `sender_name` populated. LLM processes messages during the next planning cycle with readable social context (sender name, role, text, relationship score) and response guidance. Consumed dialogue/greeting messages are removed from the queue after LLM processing; trade_proposal messages preserved. `RealLLMOrchestrator` computes actual nearby friendly agents by position and faction. `share_knowledge` messages are processed in the tick loop, updating the recipient's knowledge store and emitting `knowledge_shared` events. Knowledge is shared via conversation messages. Interaction counts increment. Events are logged. Cap of 5 conversation pairs per tick enforced.
 - [x] **F7**: `GET /api/colony` returns demographics, resource totals, structure counts, and equipment stats. WebSocket snapshot includes `colony_stats` with structure/equipment metrics. ColonyInfo.svelte renders population, births, deaths, resource totals, structures, and factions. Frontend HUD shows key metric widgets.
 - [x] **F8**: `relationships` dict tracks interactions per agent pair. REPRODUCE is gated by `interaction_count >= INTERACTION_THRESHOLD`. Relationships decay over time without interaction. AgentInspector shows relationships. Unconditional reproduction is replaced.
 - [x] **F9**: ActionType enum includes all 20 types. All new action types (MINE, HUNT, FISH, FARM, CRAFT, BUILD, ATTACK, GUARD, EXPLORE, HEAL) registered in REGISTRY with handler functions.

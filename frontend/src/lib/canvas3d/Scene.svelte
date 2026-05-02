@@ -1,15 +1,17 @@
 <script lang="ts">
-	import { Canvas, T } from '@threlte/core';
-	import { OrbitControls } from '@threlte/extras';
-	import { WebGLRenderer } from 'three';
-	import KeyboardPan from './KeyboardPan.svelte';
-	import { setControls } from './controlsStore';
+	import { Canvas } from '@threlte/core';
+	import { WebGLRenderer, ACESFilmicToneMapping } from 'three';
+	import InteractivityInit from './InteractivityInit.svelte';
+	import AmbientParticles from './AmbientParticles.svelte';
+	import PostProcessing from './PostProcessing.svelte';
+	import SceneContent from './SceneContent.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
+		bloomEnabled?: boolean;
 	}
 
-	let { children }: Props = $props();
+	let { children, bloomEnabled = true }: Props = $props();
 
 	const createRenderer = (canvas: HTMLCanvasElement) => {
 		const renderer = new WebGLRenderer({
@@ -18,33 +20,19 @@
 			alpha: false
 		});
 		renderer.setClearColor(0x1a1a2e);
+		renderer.toneMapping = ACESFilmicToneMapping;
+		renderer.toneMappingExposure = 1.0;
 		return renderer;
 	};
 </script>
 
 <Canvas {createRenderer}>
-	<T.PerspectiveCamera
-		makeDefault
-		position={[35, 35, 35]}
-		oncreate={(ref) => {
-			ref.lookAt(0, 0, 0);
-		}}
-	>
-		<OrbitControls
-			enableDamping
-			minDistance={5}
-			maxDistance={100}
-			oncreate={(c) => {
-				setControls(c);
-			}}
-		/>
-	</T.PerspectiveCamera>
-
-	<T.AmbientLight intensity={0.5} />
-	<T.DirectionalLight position={[10, 20, 10]} intensity={1.0} />
-
-	<KeyboardPan />
-	{@render children?.()}
+	<InteractivityInit>
+		<PostProcessing {bloomEnabled} />
+		<SceneContent />
+		<AmbientParticles />
+		{@render children?.()}
+	</InteractivityInit>
 </Canvas>
 
 <style>

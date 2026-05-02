@@ -99,6 +99,7 @@ class RealLLMOrchestrator:
 
         # Compute nearby hostiles
         nearby_hostiles = ""
+        nearby_friendly = []
         if agents:
             import math
             hostiles: list[str] = []
@@ -113,12 +114,26 @@ class RealLLMOrchestrator:
                     # Hostile if different faction or no faction
                     if other.faction_id != agent.faction_id:
                         hostiles.append(f"{other.name} ({other.role}) at ({int(other.position[0])},{int(other.position[1])})")
+                    # Friendly if same faction or no faction
+                    if other.faction_id == agent.faction_id or not other.faction_id:
+                        nearby_friendly.append(f"{other.name} ({other.role})")
             nearby_hostiles = "; ".join(hostiles)
+        nearby_agents_str = "; ".join(nearby_friendly) if nearby_friendly else "none"
+
+        # Format relationship context
+        rel_context = ""
+        if agent.relationships:
+            entries = []
+            for other_id, rel in list(agent.relationships.items())[:5]:
+                other = next((a for a in (agents or []) if a.id == other_id), None)
+                name = other.name if other else other_id
+                entries.append(f"{name}: score={rel.score:.2f}, interactions={rel.interaction_count}")
+            rel_context = "; ".join(entries)
 
         return build_agent_prompt(
             agent=agent,
             nearby_resources=nearby_resources,
-            nearby_agents="none",
+            nearby_agents=nearby_agents_str,
             memories=memories,
             trigger=trigger,
             last_action_result=agent.last_action_result,
@@ -127,6 +142,7 @@ class RealLLMOrchestrator:
             craftable_recipes=craftable_recipes,
             equipment=equipment,
             nearby_hostiles=nearby_hostiles,
+            relationship_context=rel_context,
         )
 
     async def check_availability(self) -> bool:

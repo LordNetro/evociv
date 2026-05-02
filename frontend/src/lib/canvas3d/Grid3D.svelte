@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { T } from '@threlte/core';
-
+	import { T, useTask } from '@threlte/core';
+	import { ShaderMaterial } from 'three';
 	import * as THREE from 'three';
+	import gridVert from '$lib/shaders/grid.vert.glsl?raw';
+	import gridFrag from '$lib/shaders/grid.frag.glsl?raw';
 
 	interface TileData {
 		x: number;
@@ -25,6 +27,21 @@
 	};
 
 	let meshRef: THREE.InstancedMesh | undefined = $state();
+
+	const gridMat = new ShaderMaterial({
+		uniforms: {
+			uTime: { value: 0 },
+			uHeightScale: { value: 0.02 },
+			uLineWidth: { value: 0.02 },
+			uLineSpacing: { value: 1.0 }
+		},
+		vertexShader: gridVert,
+		fragmentShader: gridFrag
+	});
+
+	useTask((delta) => {
+		gridMat.uniforms.uTime.value += delta;
+	});
 
 	function updateInstances(currentTiles: TileData[]) {
 		if (!meshRef) return;
@@ -56,5 +73,5 @@
 
 <T.InstancedMesh bind:ref={meshRef}>
 	<T.BoxGeometry args={[1, 0.1, 1]} />
-	<T.MeshStandardMaterial />
+	<T is={gridMat} />
 </T.InstancedMesh>

@@ -371,7 +371,7 @@ class TestMockLLMResponse:
         prompt = llm.build_prompt(agent, world=None, agents=None)
         assert "Unread message from Bob" in prompt
         # Call async and resolve
-        future = llm.call_async(agent.id, prompt)
+        llm.call_async(agent.id, prompt)
         await asyncio.sleep(0.01)
         completed = llm.poll_completed()
         assert len(completed) == 1

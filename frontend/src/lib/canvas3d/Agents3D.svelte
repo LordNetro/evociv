@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { T, useTask } from '@threlte/core';
+	import { useInteractivity } from '@threlte/extras';
 	import { uiStore } from '$lib/stores/uiStore.svelte.js';
 	import { canvas3dStore } from './canvas3dStore.svelte.js';
 
@@ -67,7 +68,15 @@
 					<T.MeshStandardMaterial color={factionColor} side={2} />
 				</T.Mesh>
 			{/if}
-			<T.Mesh on:click={() => handleClick(id)} userData={{ agentId: id }}>
+			<T.Mesh
+				oncreate={(ref) => {
+					const { addInteractiveObject, removeInteractiveObject } = useInteractivity();
+					const handler = () => handleClick(id);
+					addInteractiveObject(ref, { onclick: handler });
+					return () => removeInteractiveObject(ref);
+				}}
+				userData={{ agentId: id }}
+			>
 				<T.SphereGeometry args={[0.35]} />
 				<T.MeshStandardMaterial color={getColor(agent.role)} />
 			</T.Mesh>

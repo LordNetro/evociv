@@ -67,7 +67,12 @@ class ConversationManager:
                     a1,
                     Message(
                         sender_id=a2.id,
-                        content={"type": "greeting", "agent_name": a2.name},
+                        content={
+                            "type": "greeting",
+                            "agent_name": a2.name,
+                            "sender_name": a2.name,
+                            "sender_role": a2.role,
+                        },
                         tick=tick,
                     ),
                 )
@@ -75,7 +80,12 @@ class ConversationManager:
                     a2,
                     Message(
                         sender_id=a1.id,
-                        content={"type": "greeting", "agent_name": a1.name},
+                        content={
+                            "type": "greeting",
+                            "agent_name": a1.name,
+                            "sender_name": a1.name,
+                            "sender_role": a1.role,
+                        },
                         tick=tick,
                     ),
                 )

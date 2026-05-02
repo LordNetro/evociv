@@ -223,57 +223,149 @@ class MockLLMOrchestrator:
         self.success_rate = success_rate
         self._pending: dict[str, asyncio.Future] = {}
 
-    def build_prompt(self, agent: Agent, world=None) -> str:
+    def build_prompt(self, agent: Agent, world=None, agents=None) -> str:
         """Build a mock prompt string from agent state."""
         from app.simulation.actions import ActionResult
         lar = agent.last_action_result
         lar_str = "None (first tick)"
         if isinstance(lar, ActionResult):
             lar_str = f"{lar.action_type} success={lar.success} {lar.action_summary}"
+        # Check conversation queue
+        queue_info = ""
+        if agent.conversation_queue:
+            dialogue_msgs = [m for m in agent.conversation_queue if m.content.get("type") == "dialogue"]
+            if dialogue_msgs:
+                latest = dialogue_msgs[-1]
+                text = latest.content.get("text", "")
+                sender = latest.content.get("sender_name", latest.sender_id)
+                sender_id = latest.sender_id
+                queue_info = f' | Unread message from {sender} (id={sender_id}): "{text}"'
         return (
             f"Mock prompt for {agent.name}: "
             f"hunger={agent.hunger:.0f}, thirst={agent.thirst:.0f} "
-            f"last_action={lar_str}"
+            f"last_action={lar_str}{queue_info}"
         )
 
     def call_async(self, agent_id: str, prompt: str) -> asyncio.Future:
-        """Create a future that will resolve with a mock plan after a delay."""
+        """Create a future that will resolve with a varied mock plan after a delay."""
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self._pending[agent_id] = future
 
+        # Extract agent name from prompt for varied responses
+        agent_name = agent_id
+        if "Mock prompt for " in prompt:
+            agent_name = prompt.split("Mock prompt for ", 1)[1].split(":", 1)[0].strip()
+
         async def _resolve() -> None:
             await asyncio.sleep(random.uniform(*self.delay_range))
             if random.random() < self.success_rate:
+                # ── Check for unread messages and respond to sender ──
+                say_to = None
+                if "Unread message from" in prompt:
+                    # Extract sender info: "Unread message from {name} (id={sender_id}): \"{text}\""
+                    after = prompt.split("Unread message from ", 1)[1]
+                    parts = after.split(":", 1)
+                    sender_part = parts[0].strip()
+                    # sender_part looks like: Alice (id=a2) or just a2 if no sender_name
+                    if "(id=" in sender_part:
+                        sender_id = sender_part.split("(id=", 1)[1].rstrip(")")
+                    else:
+                        sender_id = sender_part
+                    # Always respond when there's an unread message (deterministic for tests)
+                    responses_to_stranger = [
+                        "Oh, hello there!",
+                        "Nice to meet you!",
+                        "Thanks for reaching out.",
+                        "I appreciate you talking to me.",
+                    ]
+                    responses_to_friend = [
+                        "Hey! Good to hear from you!",
+                        "I was just thinking about that too!",
+                        "Great! Let's work together on this.",
+                        "Absolutely, I agree!",
+                    ]
+                    # Default to stranger responses (we don't have relationship info in mock)
+                    say_text = random.choice(responses_to_stranger + responses_to_friend)
+                    say_to = {"agent_id": sender_id, "text": say_text}
+
+                # ── Varied say_to (50% chance) when no unread messages ──
+                if say_to is None and "Unread message from" not in prompt:
+                    if random.random() < 0.5:
+                        targets = [t for t in ("agent_001", "agent_002", "agent_003") if t != agent_id]
+                        if targets:
+                            target_id = random.choice(targets)
+                            say_texts = [
+                                "Hey, how are things going?",
+                                "I found some good spots nearby!",
+                                "We should stick together out here.",
+                                "Have you seen any resources around?",
+                                "Stay safe out there, alright?",
+                                "The world is full of opportunities!",
+                                "I'll cover this side, you check over there.",
+                                "Let me know if you need a hand.",
+                                "There's plenty to gather today!",
+                                "Watch your step in unknown areas.",
+                            ]
+                            say_to = {"agent_id": target_id, "text": random.choice(say_texts)}
+
+                # ── Varied think_aloud ──
+                thoughts = [
+                    "I should explore the area and gather what I can.",
+                    "This place looks promising. Time to get to work.",
+                    "I wonder what's over that hill...",
+                    "Need to find more food and water for the tribe.",
+                    "The tribe needs resources. Let me focus.",
+                    "I should check on my fellow tribe members.",
+                    "There's always more to discover out there.",
+                    "Let me be efficient with my time today.",
+                    "The land provides, but we must work for it.",
+                    "Every resource counts. Let's not waste any.",
+                    "I feel like today is going to be productive.",
+                    "Better keep moving — there's work to be done.",
+                    "I should find a good spot to gather supplies.",
+                ]
+
+                # ── Varied intentions ──
+                intentions = [
+                    "Survive and gather resources",
+                    "Explore the unknown territories",
+                    "Secure food and water for the tribe",
+                    "Find better resources for crafting",
+                    "Scout the area for opportunities",
+                ]
+
+                # ── Varied steps ──
+                step_action = random.choice(["gather", "explore", "move"])
+                steps = [
+                    {
+                        "action": "move",
+                        "target": [random.randint(5, 45), random.randint(5, 45)],
+                        "duration_secs": random.randint(3, 8),
+                        "reason": "Scouting the area",
+                    },
+                    {
+                        "action": step_action,
+                        "target": None,
+                        "duration_secs": random.randint(5, 12),
+                        "reason": "Working for the tribe",
+                    },
+                ]
+
                 future.set_result(
                     {
                         "success": True,
                         "data": {
-                            "reasoning": f"Mock reasoning for {agent_id}",
-                            "intention": "Survive and gather resources",
+                            "reasoning": f"{agent_name} is assessing the situation and planning next moves.",
+                            "intention": random.choice(intentions),
                             "priority": "medium",
-                            "steps": [
-                                {
-                                    "action": "move",
-                                    "target": [25, 25],
-                                    "duration_secs": 5,
-                                    "reason": "Exploring",
-                                },
-                                {
-                                    "action": "gather",
-                                    "target": None,
-                                    "duration_secs": 8,
-                                    "reason": "Collect resources",
-                                },
-                            ],
+                            "steps": steps,
                             "abort_if": {
                                 "hunger < 15": "Find and eat berries",
                                 "thirst < 15": "Find water",
                             },
-                            "think_aloud": (
-                                "I should explore the area and gather what I can."
-                            ),
-                            "say_to": {"agent_id": "agent_002", "text": "Hello Mila!"},
+                            "think_aloud": random.choice(thoughts),
+                            "say_to": say_to,
                         },
                     }
                 )

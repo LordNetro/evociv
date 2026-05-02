@@ -236,6 +236,22 @@ class SimulationEngine:
         # 3b. Process pending trade proposals
         await self._process_trade_proposals(tick)
 
+        # 3c. Apply share_knowledge messages
+        for agent in self.agents:
+            for msg in list(agent.conversation_queue):
+                if msg.content.get("type") == "share_knowledge":
+                    knowledge = msg.content.get("knowledge", {})
+                    if knowledge and isinstance(knowledge, dict):
+                        agent.knowledge.update(knowledge)
+                        self.event_queue.push(
+                            "knowledge_learned",
+                            f"{agent.name} learned about {', '.join(knowledge.keys())}",
+                            "info",
+                            [agent.id],
+                            tick,
+                        )
+                    agent.conversation_queue.remove(msg)
+
         # 4. Process event queue (events pushed during FSM run)
         events = self.event_queue.drain()
 
@@ -334,7 +350,12 @@ class SimulationEngine:
                 target.conversation_queue.append(
                     Message(
                         sender_id=agent.id,
-                        content={"type": "dialogue", "text": say_to["text"]},
+                        content={
+                            "type": "dialogue",
+                            "text": say_to["text"],
+                            "sender_name": agent.name,
+                            "sender_role": agent.role,
+                        },
                         tick=tick,
                     )
                 )
@@ -1242,7 +1263,7 @@ class SimulationEngine:
             fsm.transition_to("llm_waiting")
             return
 
-        prompt = self.llm.build_prompt(agent, self.world)
+        prompt = self.llm.build_prompt(agent, self.world, self.agents)
         # F1: consume last_action_result after prompt build to prevent stale accumulation
         agent.last_action_result = None
         agent.llm_future = self.llm.call_async(agent.id, prompt)
@@ -1275,6 +1296,11 @@ class SimulationEngine:
                     if len(agent.monologue_history) > 10:
                         agent.monologue_history.pop(0)
                     self._process_say_to(agent, plan, tick)
+                    # Consume processed dialogue messages
+                    agent.conversation_queue = [
+                        msg for msg in agent.conversation_queue
+                        if msg.content.get("type") not in ("dialogue", "greeting", "share_knowledge")
+                    ]
                     logger.debug(
                         f"{agent.name} received new plan: "
                         f"{plan.get('intention', '')}"
@@ -1352,6 +1378,11 @@ class SimulationEngine:
                 if len(agent.monologue_history) > 10:
                     agent.monologue_history.pop(0)
                 self._process_say_to(agent, plan, tick)
+                # Consume processed dialogue messages
+                agent.conversation_queue = [
+                    msg for msg in agent.conversation_queue
+                    if msg.content.get("type") not in ("dialogue", "greeting", "share_knowledge")
+                ]
                 agent.llm_call_pending = False
                 agent.llm_future = None
                 self.builder.mark_agent_dirty(agent.id)

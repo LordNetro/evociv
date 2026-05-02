@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from app.simulation.agent import Agent
+from app.simulation.agent import Agent, RelationshipData
 
 ROLE_GUIDANCE: dict[str, str] = {
     "gatherer": "As a gatherer, your priority is collecting resources for the tribe. Gather berries, wood, fiber, and other materials.",
@@ -65,6 +65,9 @@ KNOWLEDGE:
 
 NEARBY AGENTS: {agents}
 
+RELATIONSHIPS:
+{relationship_context}
+
 SOCIAL CONTEXT:
 {social_context}
 
@@ -94,12 +97,14 @@ Respond with ONLY this JSON format:
     "thirst < 15": "what to do if dehydrated"
   },
   "think_aloud": "Your internal monologue as narration",
-  "say_to": {"agent_id": "target_agent_id", "text": "What you want to say to another agent"} | null
+  "say_to": {"agent_id": "target_agent_id", "text": "your message"} | null
 }
 
 IMPORTANT: "move" to get to resources, then use the appropriate action.
 If you are already near a resource, use its action directly without moving first.
 Keep plans to 2-4 steps maximum.
+
+Use say_to to talk to another agent. If someone sent you a message (see SOCIAL CONTEXT), consider responding to them. Be friendly to allies and faction members, cautious with strangers, hostile to enemies. You can also initiate new conversations.
 """
 
 
@@ -134,6 +139,7 @@ def build_agent_prompt(
     craftable_recipes: str = "",
     equipment: str = "",
     nearby_hostiles: str = "",
+    relationship_context: str = "",
 ) -> str:
     """Build the full prompt for an agent LLM call."""
     personality = agent.__dict__.get("system_prompt", "") or (
@@ -156,12 +162,18 @@ def build_agent_prompt(
         else:
             lar_str = str(last_action_result)
 
-    # Format social context
+    # Format social context with ALL messages
     if not social_context:
         if agent.conversation_queue:
-            count = len(agent.conversation_queue)
-            latest = agent.conversation_queue[-1]
-            social_str = f"- Unread messages: {count}\n- Latest: {latest.content}"
+            msg_lines = []
+            for msg in agent.conversation_queue:
+                ctype = msg.content.get("type", "message")
+                text = msg.content.get("text", "")
+                sender = msg.content.get("sender_name", msg.sender_id)
+                srole = msg.content.get("sender_role", "unknown")
+                rel_score = agent.relationships.get(msg.sender_id, RelationshipData()).score if hasattr(agent, 'relationships') else 0
+                msg_lines.append(f"{ctype} from {sender} ({srole}): \"{text}\" [relationship: {rel_score:.2f}]")
+            social_str = "\n".join(msg_lines)
         else:
             social_str = "- No pending messages"
     else:
@@ -204,6 +216,9 @@ def build_agent_prompt(
     # Format nearby hostiles
     hostiles_str = nearby_hostiles if nearby_hostiles else "(none)"
 
+    # Format relationship context
+    rel_str = relationship_context if relationship_context else "(none)"
+
     state = STATE_PROMPT_TEMPLATE.format(
         x=agent.position[0],
         y=agent.position[1],
@@ -221,6 +236,7 @@ def build_agent_prompt(
         nearby_hostiles=hostiles_str,
         knowledge=knowledge_str,
         agents=nearby_agents,
+        relationship_context=rel_str,
         social_context=social_str,
         faction_context=faction_str,
         memories=memories,

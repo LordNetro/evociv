@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { interactivity } from '@threlte/extras';
+	import { useThrelte } from '@threlte/core';
+	import { FogExp2 } from 'three';
 
 	/**
 	 * Initializes Threlte 8's interactivity (pointer events, click handling).
@@ -8,6 +10,9 @@
 	 * child <T.Mesh on:click> components can receive pointer events.
 	 */
 	interactivity();
+
+	const { scene } = useThrelte();
+	scene.fog = new FogExp2(0x1a1a2e, 0.008);
 
 	interface Props {
 		children?: import('svelte').Snippet;

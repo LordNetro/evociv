@@ -19,22 +19,22 @@ ROLE_GUIDANCE: dict[str, str] = {
 }
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are {name}, a {role} in a tribal society.
+SYSTEM_PROMPT_TEMPLATE = """You are {name}, a {role} in a tribal society with other agents.
 
 Your personality:
 {personality}
 
-You live in a 50x50 grid world with resources like trees (for wood), water, berries (for food), stone, iron ore, clay, sand, fiber, and animals (deer, rabbit, boar).
-You can move, chop trees, drink water, eat berries, gather resources, rest, mine minerals, explore unknown areas, craft tools and weapons, hunt animals, fish, build structures, farm crops, attack enemies, guard yourself, heal, trade with others, socialize, and feed children.
-Structures such as workbenches, forges, houses, walls, and farms can be built to support the tribe.
-Crafting tools like axes, pickaxes, spears, and fishing rods improves your efficiency.
+The world has trees (wood), water, berries (food), stone, iron ore, clay, sand, fiber, and animals (deer, rabbit, boar).
+Actions: move, chop, drink, eat, gather, rest, mine, explore, craft, hunt, fish, build, farm, attack, guard, heal, trade, socialize, feed_child.
 
 RULES:
-- You MUST respond ONLY with a valid JSON object. No other text.
-- Your goal is to survive and help your tribe prosper.
-- If you have a critical need (hunger > 85 or thirst > 85), address it IMMEDIATELY.
-- You can form relationships with other agents you encounter.
-- Think about what would benefit both you and the group."""
+- Respond ONLY with a valid JSON object. No other text.
+- Survive and help the tribe prosper. If hunger > 85 or thirst > 85, fix it NOW.
+- BE SOCIAL: Talk to other agents, build relationships, trade resources.
+- Use your ROLE to decide what to do. Do what your role says.
+- Check NEARBY AGENTS: greet them, chat, offer trades, share info.
+- If someone messaged you (SOCIAL CONTEXT), ALWAYS respond to them.
+- Form friendships, not just transactions. Relationship scores matter."""
 
 STATE_PROMPT_TEMPLATE = """CURRENT STATE:
 - Position: ({x:.0f}, {y:.0f})
@@ -61,8 +61,14 @@ NEARBY RESOURCES: {resources}
 
 NEARBY STRUCTURES: {nearby_structures}
 
-CRAFTABLE RECIPES:
+CRAFTABLE RECIPES (ready to craft):
 {craftable_recipes}
+
+ALL RECIPES (plan what to gather):
+{all_recipes}
+
+BUILDABLE STRUCTURES:
+{buildable_structures}
 
 NEARBY HOSTILES:
 {nearby_hostiles}
@@ -88,30 +94,30 @@ TRIGGER: {trigger}"""
 
 JSON_FORMAT_INSTRUCTION = """
 Respond with ONLY this JSON format:
+
 {
   "reasoning": "One sentence explaining your decision",
-  "intention": "What you want to achieve",
+  "intention": "What you want to achieve in one sentence",
   "priority": "low" | "medium" | "high",
   "steps": [
-    {
-      "action": "move" | "chop" | "drink" | "eat" | "gather" | "rest" | "mine" | "explore" | "craft" | "hunt" | "fish" | "build" | "farm" | "attack" | "guard" | "heal" | "trade" | "socialize" | "feed_child",
-      "target": [x, y] or null,
-      "reason": "Why this step"
-    }
+    {"action": "move"|"chop"|"drink"|"eat"|"gather"|"rest"|"mine"|"explore"|"craft"|"hunt"|"fish"|"build"|"farm"|"attack"|"guard"|"heal"|"trade"|"socialize"|"feed_child", "target": [x,y]|null, "reason": "why"}
   ],
-  "abort_if": {
-    "hunger < 15": "what to do if starving",
-    "thirst < 15": "what to do if dehydrated"
-  },
-  "think_aloud": "Your internal monologue as narration",
-  "say_to": {"agent_id": "target_agent_id", "text": "your message"} | null
+  "abort_if": {"hunger < 15": "what to do", "thirst < 15": "what to do"},
+  "think_aloud": "What you're thinking right now",
+  "say_to": {"agent_id": "agent_001", "text": "natural greeting or question"}  | null
 }
 
-IMPORTANT: "move" to get to resources, then use the appropriate action.
-If you are already near a resource, use its action directly without moving first.
-Keep plans to 2-4 steps maximum.
+DIALOGUE:
+- INCLUDED say_to if you have neighbors (check NEARBY AGENTS). Use null when focused on survival.
+- Vary your conversations. Don't repeat the same greeting every time.
+- Don't just say "Hi" - be specific: comment on the weather, ask about their role, offer collaboration.
+- If someone sent you a message (SOCIAL CONTEXT), respond to them specifically.
 
-Use say_to to talk to another agent. If someone sent you a message (see SOCIAL CONTEXT), consider responding to them. Be friendly to allies and faction members, cautious with strangers, hostile to enemies. You can also initiate new conversations.
+PLANNING:
+- 2-5 steps using ONLY the valid actions listed above. Never make up new actions.
+- YOUR ROLE is important: miner->mine, builder->build, crafter->craft, fighter->guard/attack.
+- If survival needs are ok, pursue your role. If critical, fix needs first but include role actions in your plan.
+- If you have materials, craft. If you have tools, use them.
 """
 
 
@@ -130,7 +136,44 @@ def _get_craftable_recipes(agent: Agent) -> str:
             craftable.append(
                 f"- {name} ({recipe.category}): {recipe.inputs} -> {recipe.output}"
             )
-    return "\n".join(craftable)
+    return "\n".join(craftable) if craftable else "(none craftable yet — gather materials first)"
+
+
+def _get_all_recipes(agent: Agent) -> str:
+    """Return ALL craftable recipes with costs and what the agent has, so they can plan what to gather."""
+    from app.core.definitions import DEFINITIONS
+
+    recipes: list[str] = []
+    for name, recipe in DEFINITIONS.recipes.items():
+        costs_str = ", ".join(f"{qty} {item}" for item, qty in recipe.inputs.items())
+        have = ", ".join(
+            f"{agent.inventory.get(item, 0)}/{qty} {item}"
+            for item, qty in recipe.inputs.items()
+        )
+        output = ", ".join(f"{qty} {item}" for item, qty in recipe.output.items())
+        can = "YES" if all(agent.inventory.get(item, 0) >= qty for item, qty in recipe.inputs.items()) else "NO"
+        recipes.append(f"- [{can}] {name}: needs [{costs_str}] -> gives [{output}] | you have: {have}")
+    return "\n".join(recipes)
+
+
+def _get_buildable_structures(agent: Agent) -> str:
+    """Return a formatted list of all buildable structures and their costs."""
+    from app.core.definitions import DEFINITIONS
+    from app.simulation.roles import role_allows_action
+    from app.simulation.actions import ActionType
+
+    if not role_allows_action(agent.role, ActionType.BUILD):
+        return "(your role does not allow building)"
+
+    structures: list[str] = []
+    for name, sdef in DEFINITIONS.structures.items():
+        costs_str = ", ".join(f"{qty} {item}" for item, qty in sdef.costs.items())
+        have = ", ".join(
+            f"{agent.inventory.get(item, 0)}/{qty} {item}"
+            for item, qty in sdef.costs.items()
+        )
+        structures.append(f"- {name}: needs [{costs_str}] | you have: {have}")
+    return "\n".join(structures) if structures else "(none defined)"
 
 
 def build_agent_prompt(
@@ -144,6 +187,8 @@ def build_agent_prompt(
     faction_context: str = "",
     nearby_structures: str = "",
     craftable_recipes: str = "",
+    all_recipes: str = "",
+    buildable_structures: str = "",
     equipment: str = "",
     nearby_hostiles: str = "",
     relationship_context: str = "",
@@ -266,6 +311,8 @@ def build_agent_prompt(
         resources=nearby_resources,
         nearby_structures=structures_str,
         craftable_recipes=recipes_str,
+        all_recipes=all_recipes,
+        buildable_structures=buildable_structures,
         nearby_hostiles=hostiles_str,
         knowledge=knowledge_str,
         agents=nearby_agents,

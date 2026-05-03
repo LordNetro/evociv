@@ -47,6 +47,7 @@ class RealLLMOrchestrator:
 
         self._llm_semaphore: asyncio.Semaphore | None = None
         self._background_tasks: set[asyncio.Task] = set()
+        self._pending_tasks: dict[str, asyncio.Task] = {}
 
     @property
     def is_available(self) -> Optional[bool]:
@@ -87,8 +88,10 @@ class RealLLMOrchestrator:
                 faction_context = f'- You are a member of faction "{agent.faction_id}"'
 
         # Compute craftable recipes
-        from app.ai.prompts import _get_craftable_recipes
+        from app.ai.prompts import _get_craftable_recipes, _get_buildable_structures, _get_all_recipes
         craftable_recipes = _get_craftable_recipes(agent)
+        all_recipes = _get_all_recipes(agent)
+        buildable_structures = _get_buildable_structures(agent)
 
         # Format equipment
         equipment = (
@@ -111,12 +114,13 @@ class RealLLMOrchestrator:
                     agent.position[1] - other.position[1],
                 )
                 if dist <= 5.0:
+                    entry = f"{other.name} (id:{other.id}, {other.role}) at ({int(other.position[0])},{int(other.position[1])})"
                     # Hostile if different faction or no faction
                     if other.faction_id != agent.faction_id:
-                        hostiles.append(f"{other.name} ({other.role}) at ({int(other.position[0])},{int(other.position[1])})")
+                        hostiles.append(entry)
                     # Friendly if same faction or no faction
                     if other.faction_id == agent.faction_id or not other.faction_id:
-                        nearby_friendly.append(f"{other.name} ({other.role})")
+                        nearby_friendly.append(entry)
             nearby_hostiles = "; ".join(hostiles)
         nearby_agents_str = "; ".join(nearby_friendly) if nearby_friendly else "none"
 
@@ -127,7 +131,7 @@ class RealLLMOrchestrator:
             for other_id, rel in list(agent.relationships.items())[:5]:
                 other = next((a for a in (agents or []) if a.id == other_id), None)
                 name = other.name if other else other_id
-                entries.append(f"{name}: score={rel.score:.2f}, interactions={rel.interaction_count}")
+                entries.append(f"{name} (id:{other_id}): score={rel.score:.2f}, chats={rel.interaction_count}")
             rel_context = "; ".join(entries)
 
         # Format weather and time context
@@ -139,7 +143,7 @@ class RealLLMOrchestrator:
             t = world.time
             time_str = f"{t.time_of_day_label} (Day {t.day_count}, tick {t.tick_count_of_day}/{t.day_length_ticks})"
 
-        return build_agent_prompt(
+        prompt = build_agent_prompt(
             agent=agent,
             nearby_resources=nearby_resources,
             nearby_agents=nearby_agents_str,
@@ -149,12 +153,22 @@ class RealLLMOrchestrator:
             faction_context=faction_context,
             nearby_structures=nearby_structures,
             craftable_recipes=craftable_recipes,
+            all_recipes=all_recipes,
+            buildable_structures=buildable_structures,
             equipment=equipment,
             nearby_hostiles=nearby_hostiles,
             relationship_context=rel_context,
             weather=weather_str,
             time_str=time_str,
         )
+
+        # Inject thoughts: "A voice in your head says: ..."
+        for thought in agent.injected_thoughts:
+            prompt = f"A voice in your head says: {thought}\n\n{prompt}"
+        agent.monologue_history.extend(agent.injected_thoughts)
+        agent.injected_thoughts.clear()
+
+        return prompt
 
     async def check_availability(self) -> bool:
         """Test if Ollama is reachable via its /api/tags endpoint."""
@@ -211,7 +225,8 @@ class RealLLMOrchestrator:
                     reasoning = plan.get("reasoning", "")
                     if intention:
                         self.memory.add_thought(agent_id, 0, f"Planned: {intention}. {reasoning}")
-                future.set_result(result)
+                if not future.done():
+                    future.set_result(result)
 
             except asyncio.TimeoutError:
                 logger.warning(f"Ollama _resolve timed out for {agent_id}")
@@ -219,9 +234,11 @@ class RealLLMOrchestrator:
                     logger.debug(f"Mock fallback for {agent_id}")
                     mock_future = self._mock.call_async(agent_id, prompt)
                     mock_result = await mock_future
-                    future.set_result(mock_result)
+                    if not future.done():
+                        future.set_result(mock_result)
                 else:
-                    future.set_result({"success": False, "error": "LLM call timed out"})
+                    if not future.done():
+                        future.set_result({"success": False, "error": "LLM call timed out"})
 
             except Exception as e:
                 logger.warning(f"Ollama _resolve exception for {agent_id}: {type(e).__name__}: {e}")
@@ -229,14 +246,23 @@ class RealLLMOrchestrator:
                     logger.debug(f"Mock fallback for {agent_id}")
                     mock_future = self._mock.call_async(agent_id, prompt)
                     mock_result = await mock_future
-                    future.set_result(mock_result)
+                    if not future.done():
+                        future.set_result(mock_result)
                 else:
-                    future.set_result({"success": False, "error": str(e)})
+                    if not future.done():
+                        future.set_result({"success": False, "error": str(e)})
 
         task = asyncio.create_task(_resolve())
+        self._pending_tasks[agent_id] = task
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
         return future
+
+    def cancel_agent_task(self, agent_id: str) -> None:
+        """Cancel the background task for a pending LLM call and remove from tracking."""
+        task = self._pending_tasks.pop(agent_id, None)
+        if task and not task.done():
+            task.cancel()
 
     async def _call_ollama(self, prompt: str) -> dict:
         """Call Ollama's /api/chat with JSON mode."""
@@ -287,4 +313,5 @@ class RealLLMOrchestrator:
                 except Exception as e:
                     completed.append((agent_id, {"success": False, "error": str(e)}))
                 del self._pending[agent_id]
+                self._pending_tasks.pop(agent_id, None)
         return completed

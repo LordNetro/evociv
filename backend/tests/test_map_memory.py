@@ -1,7 +1,5 @@
 """Tests for the Map Memory + Fog of War system."""
 
-import pytest
-
 from app.simulation.agent import Agent
 from app.simulation.faction import Faction, FactionManager
 from app.simulation.world import World

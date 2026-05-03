@@ -1,0 +1,13 @@
+change: fsm-stability-and-refactor
+phase: archive
+artifact_store: hybrid
+artifacts:
+  explore: true
+  proposal: true
+  specs: true
+  design: true
+  tasks: true
+  apply-progress: true
+  verify-report: true
+  archive-report: true
+last_updated: 2026-05-03T20:36:00+02:00

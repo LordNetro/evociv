@@ -5,8 +5,8 @@ import { writable } from 'svelte/store';
  */
 
 const DEFAULT_CONFIG = {
-	gridWidth: 50,
-	gridHeight: 50,
+	gridWidth: 80,
+	gridHeight: 80,
 	tileSize: 32,
 	tickRate: 0.1,
 	wsUrl: 'ws://127.0.0.1:8765/ws'

@@ -14,7 +14,6 @@ from app.core.definition_models import (
     AgentDefaults,
     ArmorDef,
     DefinitionContainer,
-    EmotionDef,
     FactionDef,
     RecipeDef,
     ResourceDef,

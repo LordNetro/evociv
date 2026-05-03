@@ -1,6 +1,8 @@
 {
   "private": true,
-  "workspaces": ["frontend"],
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "dev": "concurrently -k --graceful-timeout=1000 \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "cd frontend && npm run dev",
@@ -9,6 +11,8 @@
     "type-check": "cd frontend && npm run check"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
     "concurrently": "^9.1.2"
   }
 }

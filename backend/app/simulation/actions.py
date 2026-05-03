@@ -319,10 +319,21 @@ def handle_gather(
     target: tuple[int, int] | None = None,
     step: dict | None = None,
 ) -> ActionResult:
-    """Gather one unit from a nearby berries bush or tree."""
+    """Gather one unit from a nearby resource (berries, tree, stone, iron_ore).
+
+    Stone and iron_ore can be gathered slowly by anyone — mining with a pickaxe is faster.
+    """
     for x, y, tile in _tiles_on_or_adjacent(agent, world):
-        if tile.resource_type in ("berries", "tree") and tile.amount > 0:
-            key = "berries" if tile.resource_type == "berries" else "wood"
+        rt = tile.resource_type
+        if rt in ("berries", "tree", "stone", "iron_ore") and tile.amount > 0:
+            # Map resource type to inventory key
+            key_map = {
+                "berries": "berries",
+                "tree": "wood",
+                "stone": "stone",
+                "iron_ore": "iron_ore",
+            }
+            key = key_map[rt]
             if not _inventory_capacity(agent, key):
                 return ActionResult(
                     success=False,

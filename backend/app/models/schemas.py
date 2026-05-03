@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Any
 
 
 # --- Agent State ---
@@ -38,6 +38,7 @@ class AgentState(BaseModel):
     skills: dict[str, int] = {}
     active_effects: dict[str, dict] = {}
     emotions: dict[str, dict] = {}
+    is_commanded: bool = False
 
 
 # --- Simulation Metrics ---
@@ -73,6 +74,13 @@ class ServerMessage(BaseModel):
     payload: dict
 
 
+# --- Client Command (Director Mode) ---
+class ClientCommand(BaseModel):
+    type: Literal["move_to", "do_action", "set_plan", "inject_thought", "release", "release_all"]
+    agent_id: str
+    payload: dict[str, Any] = {}
+
+
 # --- Client Message ---
 class ClientMessage(BaseModel):
     type: Literal["command", "config_change", "agent_edit"]
@@ -104,3 +112,4 @@ class WorldSnapshot(BaseModel):
     time_state: dict = {}
     weather_state: dict = {}
     faction_tile_visibility: dict[str, dict[str, list[dict]]] = {}
+    director_mode: bool = False

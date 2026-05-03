@@ -56,3 +56,23 @@ agent_defaults:
         weapon: fist
         armor: none
         tool: none
+
+    - id: agent_004
+      name: Nyx
+      position:
+        - 25.0
+        - 40.0
+      role: miner
+      strength: 75
+      intelligence: 45
+      sociability: 35
+      speed: 40
+      sex: female
+      age: 0
+      max_age: 3500
+      equipment:
+        weapon: stone_pickaxe
+        armor: none
+        tool: pickaxe
+      inventory:
+        stone_pickaxe: 1

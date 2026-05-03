@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.core.definitions import DEFINITIONS
+from app.simulation.agent import Agent
 
 
 # Module-level aliases for backward compatibility — data now lives in DEFINITIONS

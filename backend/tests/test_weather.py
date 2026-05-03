@@ -3,7 +3,6 @@
 Written FIRST (TDD RED phase), WeatherSystem does not yet exist.
 """
 
-import random
 from unittest.mock import patch
 
 from app.simulation.weather import WeatherSystem

@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 /**
- * @typedef {{ selectedAgentId: string | null, showInspector: boolean, showCharts: boolean, showEventLog: boolean, paused: boolean, speed: number }} UiState
+ * @typedef {{ selectedAgentId: string | null, showInspector: boolean, showCharts: boolean, showEventLog: boolean, paused: boolean, speed: number, directorMode: boolean }} UiState
  */
 
 function createUiStore() {
@@ -12,7 +12,8 @@ function createUiStore() {
 			showCharts: true,
 			showEventLog: true,
 			paused: false,
-			speed: 1
+			speed: 1,
+			directorMode: false
 		})
 	);
 
@@ -38,6 +39,13 @@ function createUiStore() {
 		/** @param {number} speed */
 		setSpeed(speed) {
 			update((state) => ({ ...state, speed }));
+		},
+		/** @param {boolean} val */
+		setDirectorMode(val) {
+			update((state) => ({ ...state, directorMode: val }));
+		},
+		toggleDirectorMode() {
+			update((state) => ({ ...state, directorMode: !state.directorMode }));
 		}
 	};
 }

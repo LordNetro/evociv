@@ -243,7 +243,7 @@ class TestAgent:
     def test_factory_default_agents(self):
         """Factory creates 3 default agents."""
         agents = AgentFactory.create_default_agents()
-        assert len(agents) == 3
+        assert len(agents) == 4
         assert agents[0].name == "Zog"
         assert agents[0].sex == "male"
         assert agents[0].age == 0
@@ -697,7 +697,7 @@ class TestSnapshotBuilder:
         agents = AgentFactory.create_default_agents()
         builder = WorldSnapshotBuilder(world, agents)
         snapshot = builder.build(tick=1)
-        assert len(snapshot.agents) == 3
+        assert len(snapshot.agents) == 4
 
     def test_build_contains_metrics(self):
         """Snapshot contains computed metrics."""
@@ -705,7 +705,7 @@ class TestSnapshotBuilder:
         agents = AgentFactory.create_default_agents()
         builder = WorldSnapshotBuilder(world, agents)
         snapshot = builder.build(tick=1)
-        assert snapshot.metrics.population == 3
+        assert snapshot.metrics.population == 4
         assert snapshot.metrics.avg_hunger > 0
 
     def test_snapshot_contains_new_fields(self):
@@ -1321,3 +1321,158 @@ class TestIntegration:
         assert 1 <= get_action_duration(ActionType.HEAL, agent) <= 10
         assert 1 <= get_action_duration(ActionType.BUILD, agent) <= 15
         assert 1 <= get_action_duration(ActionType.FARM, agent) <= 10
+
+
+# =============================================================================
+# F6 — Flags-Only Reproduction (no cross-agent FSM mutation)
+# =============================================================================
+
+class TestF6FlagsOnlyReproduction:
+    """F6: Partner FSM is NOT mutated during reproduction."""
+
+    def test_partner_fsm_unchanged_when_agent_initiates_reproduction(self):
+        """Partner FSM state unchanged; partner flags are set."""
+        from app.simulation.agent import RelationshipData
+        world = World(width=10, height=10)
+        agent = Agent(id="a1", name="Alice", position=(5.0, 5.0), energy=100, hunger=0, thirst=0, sex="female", age=200)
+        partner = Agent(id="a2", name="Bob", position=(5.0, 5.0), energy=100, hunger=0, thirst=0, sex="male", age=200)
+        agent.relationships[partner.id] = RelationshipData(interaction_count=10, last_interaction_tick=1, score=0.5)
+        partner.relationships[agent.id] = RelationshipData(interaction_count=10, last_interaction_tick=1, score=0.5)
+        engine = SimulationEngine(world=world, agents=[agent, partner])
+        fsm = engine.fsms[agent.id]
+        fsm.transition_to("evaluate")
+        # Put partner in a state where transition_to("executing") would fail
+        partner_fsm = engine.fsms[partner.id]
+        partner_fsm.transition_to("evaluate")
+        partner_fsm.transition_to("llm_trigger")
+        partner_fsm.transition_to("llm_waiting")
+        assert partner_fsm.current_state == "llm_waiting"
+        # Trigger reproduction
+        engine._run_survival_chain(agent, fsm, tick=1000, food_nearby=[], water_nearby=[])
+        # Originating agent transitions to executing
+        assert agent.current_action == "reproduce"
+        assert fsm.current_state == "executing"
+        # F6: Partner FSM stays in llm_waiting (no cross-agent mutation)
+        assert partner_fsm.current_state == "llm_waiting"
+        # Partner flags are set
+        assert partner._is_reproducing is True
+        assert partner._reproduce_partner_id == agent.id
+
+
+# =============================================================================
+# F3 — Cooldown Guard
+# =============================================================================
+
+class TestF3CooldownGuard:
+    """F3: Cooldown check in _run_agent_fsm prevents ping-pong loop."""
+
+    def test_cooldown_active_skips_to_evaluate(self):
+        """Cooldown active (tick - last < 30) → transitions to evaluate, no LLM call."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="TestBot", position=(5.0, 5.0))
+        engine = SimulationEngine(world=world, agents=[agent])
+        fsm = engine.fsms[agent.id]
+        # Start from evaluate → llm_trigger
+        fsm.transition_to("evaluate")
+        fsm.transition_to("llm_trigger")
+        # Set _last_llm_tick to 5 ticks ago (cooldown active)
+        agent._last_llm_tick = 5
+        # Run FSM at tick=10 (tick - last = 5 < 30)
+        engine._run_agent_fsm(agent, tick=10)
+        # Should have transitioned to evaluate (skipped llm_trigger)
+        assert fsm.current_state == "evaluate"
+        # No LLM call should have been made
+        assert agent.llm_future is None
+        assert agent.llm_call_pending is False
+
+    @pytest.mark.anyio
+    async def test_cooldown_expired_normal_llm_trigger(self):
+        """Cooldown expired (tick - last >= 30) → normal LLM trigger fires."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="TestBot", position=(5.0, 5.0))
+        engine = SimulationEngine(world=world, agents=[agent])
+        fsm = engine.fsms[agent.id]
+        fsm.transition_to("evaluate")
+        fsm.transition_to("llm_trigger")
+        # Set _last_llm_tick to -30 (so tick - last = 40 >= 30, cooldown expired)
+        agent._last_llm_tick = -30
+        # Run FSM at tick=10 — should trigger LLM
+        engine._run_agent_fsm(agent, tick=10)
+        # Should have triggered LLM → now in llm_waiting
+        assert fsm.current_state == "llm_waiting"
+        assert agent.llm_future is not None
+        assert agent.llm_call_pending is True
+
+
+# =============================================================================
+# F8+F9 — Action Field Atomicity
+# =============================================================================
+
+class TestF8F9ActionFieldAtomicity:
+    """F8+F9: _reset_action_state helper and emoji consistency."""
+
+    def test_reset_action_state_clears_all_fields(self):
+        """_reset_action_state clears current_action, current_action_emoji, action_duration, action_progress."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="TestBot", position=(5.0, 5.0))
+        engine = SimulationEngine(world=world, agents=[agent])
+        # Set all action fields
+        agent.current_action = "chop"
+        agent.current_action_emoji = "🪓"
+        agent.action_duration = 5
+        agent.action_progress = 0.5
+        # Reset
+        engine._reset_action_state(agent)
+        assert agent.current_action is None
+        assert agent.current_action_emoji == ""
+        assert agent.action_duration == 0
+        assert agent.action_progress == 0.0
+
+    def test_do_action_sets_emoji_via_action_emojis(self):
+        """do_action command sets current_action_emoji from ACTION_EMOJIS."""
+        from app.simulation.actions import ACTION_EMOJIS, ActionType
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="TestBot", position=(5.0, 5.0))
+        engine = SimulationEngine(world=world, agents=[agent])
+        fsm = engine.fsms[agent.id]
+        fsm.transition_to("evaluate")
+        # Issue do_action for 'gather'
+        engine.director_mode = True
+        cmd = {"type": "do_action", "payload": {"action_id": "gather"}}
+        engine._execute_director_command(agent, cmd)
+        expected_emoji = ACTION_EMOJIS.get(ActionType("gather"), "")
+        assert agent.current_action_emoji == expected_emoji
+        assert agent.current_action == "gather"
+
+    @pytest.mark.anyio
+    async def test_instinct_move_clears_stale_action_fields(self):
+        """Instinct move path in _fsm_llm_waiting clears stale action_duration/action_progress."""
+        world = World(width=10, height=10)
+        agent = Agent(id="test_001", name="TestBot", position=(5.0, 5.0))
+        # Set up critical thirst so instinct move triggers
+        agent.thirst = 90
+        agent.hunger = 30
+        # Place water nearby
+        world.get_tile(6, 5).resource_type = "water"
+        world.get_tile(6, 5).amount = 5
+        engine = SimulationEngine(world=world, agents=[agent])
+        fsm = engine.fsms[agent.id]
+        # Put FSM into llm_waiting via evaluate → llm_trigger → llm_waiting
+        fsm.transition_to("evaluate")
+        fsm.transition_to("llm_trigger")
+        fsm.transition_to("llm_waiting")
+        # Set stale action fields
+        agent.action_duration = 99
+        agent.action_progress = 88.0
+        # Create a non-done future so _fsm_llm_waiting doesn't short-circuit to evaluate
+        future = asyncio.get_running_loop().create_future()  # not done
+        agent.llm_future = future
+        agent.llm_call_pending = True
+        engine._fsm_llm_waiting(agent, fsm, tick=1)
+        # Should have moved (thirst critical + water nearby)
+        assert agent.current_action == "seeking water"
+        # Stale action fields should be cleared
+        assert agent.action_duration == 0
+        assert agent.action_progress == 0.0
+        # Clean up the future
+        future.cancel()

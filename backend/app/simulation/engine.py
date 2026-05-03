@@ -84,9 +84,15 @@ class SimulationEngine:
         # LLM orchestrator: use injected one, or create mock as fallback
         if llm_orchestrator is not None:
             self.llm = llm_orchestrator
+            llm_name = type(llm_orchestrator).__name__
+            real_avail = getattr(llm_orchestrator, 'is_available', None)
+            logger.info(
+                f"[ENGINE] Using {llm_name} (available={'Yes' if real_avail else 'Unknown/No'})"
+            )
         else:
             from app.simulation.agent import MockLLMOrchestrator
             self.llm = MockLLMOrchestrator()
+            logger.warning("[MOCK] Engine using MockLLMOrchestrator - agents will be simplistic")
 
         self.builder = WorldSnapshotBuilder(world, agents)
         self._latest_full_snapshot: Optional[dict] = None
@@ -97,6 +103,10 @@ class SimulationEngine:
         # State tracking
         self._discovered_set: set[tuple[str, int, int]] = set()
         self._agent_health: dict[str, float] = {a.id: a.health for a in agents}
+
+        # Director mode (user override of agent autonomy)
+        self.director_mode: bool = False
+        self.command_queue: dict[str, dict] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -340,7 +350,8 @@ class SimulationEngine:
             "total_resources": colony_stats.total_resources,
         }
         snapshot = self.builder.build_delta(
-            tick, all_events, faction_manager=self.faction_manager, colony_stats=colony_stats_dict
+            tick, all_events, faction_manager=self.faction_manager, colony_stats=colony_stats_dict,
+            director_mode=self.director_mode, command_queue=self.command_queue,
         )
         if self.ws_manager:
             try:
@@ -355,7 +366,8 @@ class SimulationEngine:
 
         # 10. Store full snapshot for new WS clients
         self._latest_full_snapshot = self.builder.build(
-            tick, all_events, faction_manager=self.faction_manager, colony_stats=colony_stats_dict
+            tick, all_events, faction_manager=self.faction_manager, colony_stats=colony_stats_dict,
+            director_mode=self.director_mode, command_queue=self.command_queue,
         ).model_dump()
         if self.ws_manager:
             self.ws_manager.latest_snapshot = self._latest_full_snapshot
@@ -698,7 +710,13 @@ class SimulationEngine:
             case "executing":
                 self._fsm_executing(agent, fsm, tick)
             case "llm_trigger":
-                self._fsm_llm_trigger(agent, fsm, tick)
+                # F3: Cooldown guard — check BEFORE dispatching to prevent ping-pong loop
+                last = getattr(agent, '_last_llm_tick', -999)
+                if last > 0 and tick - last < 30:
+                    agent.last_thought = "(cooldown)"
+                    fsm.transition_to("evaluate")
+                else:
+                    self._fsm_llm_trigger(agent, fsm, tick)
             case "llm_waiting":
                 self._fsm_llm_waiting(agent, fsm, tick)
 
@@ -992,21 +1010,26 @@ class SimulationEngine:
                     agent._reproduce_partner_id = partner.id
                     partner._reproduce_partner_id = agent.id
                     fsm.transition_to("executing")
-                    fsm_partner = self.fsms[partner.id]
-                    if fsm_partner.current_state == "idle":
-                        fsm_partner.transition_to("evaluate")
-                    if fsm_partner.current_state != "executing":
-                        fsm_partner.transition_to("executing")
+                    # F6: Flags-only — partner detects reproduction during its own evaluate cycle next tick
                     return
 
         # Needs met → try LLM for higher-level planning
         if not agent.active_plan and not agent.llm_call_pending:
             fsm.transition_to("llm_trigger")
         elif agent.active_plan:
-            # Continue with existing plan — skip steps disallowed by role
+            # Continue with existing plan — skip steps disallowed by role or invalid
+            action_type = None
             while agent.plan_step_index < len(agent.active_plan["steps"]):
                 step = agent.active_plan["steps"][agent.plan_step_index]
-                action_type = ActionType(step["action"])
+                try:
+                    action_type = ActionType(step["action"])
+                except ValueError:
+                    logger.warning(
+                        f"{agent.name}: invalid action '{step['action']}' from plan, "
+                        f"skipping step"
+                    )
+                    agent.plan_step_index += 1
+                    continue
                 if roles_module.role_allows_action(agent.role, action_type):
                     break
                 agent.plan_step_index += 1
@@ -1020,25 +1043,53 @@ class SimulationEngine:
                 return
 
             step = agent.active_plan["steps"][agent.plan_step_index]
-            action_type = ActionType(step["action"])
+            try:
+                action_type = ActionType(step["action"])
+            except ValueError:
+                agent.plan_step_index += 1
+                if agent.plan_step_index >= len(agent.active_plan["steps"]):
+                    agent.active_plan = None
+                    agent.plan_step_index = 0
+                return
             agent.current_action = step["action"]
             agent.current_action_emoji = ACTION_EMOJIS.get(action_type, "❓")
             duration = get_action_duration(action_type, agent, self.world)
             agent.action_duration = duration
             agent.action_progress = 0.0
 
-            # Set target if provided by the plan step
+            # Set target if provided by the plan step — must be a list/tuple of 2 numbers
             target = step.get("target")
-            if target is not None:
-                agent.target_position = (float(target[0]), float(target[1]))
+            if isinstance(target, (list, tuple)) and len(target) == 2:
+                try:
+                    agent.target_position = (float(target[0]), float(target[1]))
+                except (TypeError, ValueError):
+                    agent.target_position = None
+            elif target is not None:
+                # String or other non-coordinate target (e.g., recipe name, agent ID) — ignore
+                agent.target_position = None
 
             if action_type == ActionType.MOVE:
+                # Safety: skip if no target_position (e.g., plan step missing coordinates)
+                if agent.target_position is None:
+                    agent.plan_step_index += 1
+                    if agent.plan_step_index >= len(agent.active_plan["steps"]):
+                        agent.active_plan = None
+                        agent.plan_step_index = 0
+                    return
                 # Pre-compute path for movement
                 start = (int(agent.position[0]), int(agent.position[1]))
                 end = (int(agent.target_position[0]), int(agent.target_position[1]))
-                agent.move_path = self.world.find_path(start, end)
-                agent.move_progress = 0.0
-                fsm.transition_to("moving")
+                # Skip MOVE if already at destination (prevents infinite loop)
+                if start == end:
+                    agent.plan_step_index += 1
+                    if agent.plan_step_index >= len(agent.active_plan["steps"]):
+                        agent.active_plan = None
+                        agent.plan_step_index = 0
+                    return  # Already in evaluate — next tick continues the plan
+                else:
+                    agent.move_path = self.world.find_path(start, end)
+                    agent.move_progress = 0.0
+                    fsm.transition_to("moving")
             else:
                 fsm.transition_to("executing")
         else:
@@ -1047,15 +1098,129 @@ class SimulationEngine:
             agent.current_action_emoji = "💤"
             fsm.transition_to("idle")
 
+    def _reset_action_state(self, agent: Agent) -> None:
+        """Atomically clear all action-related fields."""
+        agent.current_action = None
+        agent.current_action_emoji = ""
+        agent.action_duration = 0
+        agent.action_progress = 0.0
+
+    def _execute_director_command(self, agent: Agent, cmd: dict) -> None:
+        """Execute a director mode command on the given agent.
+
+        Dispatches by cmd['type'] and applies the appropriate effects.
+        """
+        fsm = self.fsms[agent.id]
+        cmd_type = cmd.get("type", "")
+
+        # Cancel pending LLM future for all commands except inject_thought
+        if cmd_type != "inject_thought" and agent.llm_call_pending and agent.llm_future:
+            agent.llm_future.cancel()
+            agent.llm_call_pending = False
+            self.llm.cancel_agent_task(agent.id)
+
+        if cmd_type == "move_to":
+            x = cmd.get("payload", {}).get("x")
+            y = cmd.get("payload", {}).get("y")
+            if x is not None and y is not None:
+                agent.target_position = (float(x), float(y))
+                start = (int(agent.position[0]), int(agent.position[1]))
+                end = (int(x), int(y))
+                agent.move_path = self.world.find_path(start, end)
+                agent.move_progress = 0.0
+                # Clear any existing plan — agent returns to autonomous after move
+                agent.active_plan = None
+                agent.plan_step_index = 0
+                fsm.transition_to("moving")
+
+        elif cmd_type == "do_action":
+            action_id = cmd.get("payload", {}).get("action_id", "")
+            if action_id:
+                # Normalize to lowercase (frontend may send "CHOP", enum uses "chop")
+                action_id = action_id.lower()
+                agent.current_action = action_id
+                from app.simulation.actions import ActionType, get_action_duration, ACTION_EMOJIS
+                try:
+                    action_type = ActionType(action_id)
+                    agent.action_duration = get_action_duration(action_type, agent, self.world)
+                    agent.current_action_emoji = ACTION_EMOJIS.get(action_type, "")
+                except ValueError:
+                    agent.action_duration = 5  # fallback duration
+                    agent.current_action_emoji = ""
+                agent.action_progress = 0.0
+                # Clear any existing plan — agent returns to autonomous after action
+                agent.active_plan = None
+                agent.plan_step_index = 0
+                fsm.transition_to("executing")
+
+        elif cmd_type == "set_plan":
+            plan = cmd.get("payload", {}).get("plan")
+            if plan and isinstance(plan, dict):
+                agent.active_plan = plan
+                agent.plan_step_index = 0
+
+        elif cmd_type == "inject_thought":
+            text = cmd.get("payload", {}).get("text", "")
+            if text:
+                agent.injected_thoughts.append(text)
+                agent.last_thought = text
+                # Force LLM trigger by resetting cooldown and transitioning
+                agent._last_llm_tick = -999  # Reset cooldown
+                if fsm.current_state in ("evaluate", "idle"):
+                    fsm.transition_to("llm_trigger")
+
+        elif cmd_type == "release":
+            # F5+F7: Full reset for single agent — cancel LLM, clear all state
+            if agent.llm_call_pending and agent.llm_future:
+                agent.llm_future.cancel()
+                self.llm.cancel_agent_task(agent.id)
+            agent.active_plan = None
+            agent.plan_step_index = 0
+            self._reset_action_state(agent)
+            agent.target_position = None
+            agent.move_path = None
+            agent.move_progress = 0.0
+            agent.injected_thoughts = []
+            agent._last_llm_tick = -999
+            agent.llm_call_pending = False
+            agent.llm_future = None
+            # Agent is already in evaluate (commands dispatched from _fsm_evaluate)
+
+        elif cmd_type == "release_all":
+            # F5+F7: Full reset for ALL agents
+            self.command_queue.clear()
+            self.director_mode = False
+            for a in self.agents:
+                if a.llm_call_pending and a.llm_future:
+                    a.llm_future.cancel()
+                    self.llm.cancel_agent_task(a.id)
+                a.active_plan = None
+                a.plan_step_index = 0
+                self._reset_action_state(a)
+                a.target_position = None
+                a.move_path = None
+                a.move_progress = 0.0
+                a.injected_thoughts = []
+                a._last_llm_tick = -999
+                a.llm_call_pending = False
+                a.llm_future = None
+
     def _fsm_evaluate(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Check needs and decide next state.
 
         New flow:
+        0. Director mode command check (BEFORE everything)
         0. Feed child if caregiver and child is critical
         1. Check role priorities (highest score first)
         2. Fallback to hardcoded survival chain
         3. LLM for higher-level planning
         """
+        # ── 0. Director mode command check ──
+        if self.director_mode and agent.id in self.command_queue:
+            cmd = self.command_queue.pop(agent.id)
+            self._execute_director_command(agent, cmd)
+            return
+
         nearby = self.world.get_nearby_resources(agent.position, radius=8)
         food_nearby = [r for r in nearby if r[2] in ("berries", "tree")]
         water_nearby = [r for r in nearby if r[2] == "water"]
@@ -1162,12 +1327,18 @@ class SimulationEngine:
     def _fsm_moving(self, agent: Agent, fsm: FSM, tick: int) -> None:
         """Advance along path toward target with collision avoidance."""
         if not agent.move_path:
-            # No path → recalculate or skip
+            # No path → recalculate or skip to next plan step
             if agent.target_position:
                 start = (int(agent.position[0]), int(agent.position[1]))
                 end = (int(agent.target_position[0]), int(agent.target_position[1]))
                 agent.move_path = self.world.find_path(start, end)
             if not agent.move_path:
+                # Unreachable — advance plan step if we have a plan
+                if agent.active_plan:
+                    agent.plan_step_index += 1
+                    if agent.plan_step_index >= len(agent.active_plan["steps"]):
+                        agent.active_plan = None
+                        agent.plan_step_index = 0
                 fsm.transition_to("evaluate")
                 return
 
@@ -1217,7 +1388,29 @@ class SimulationEngine:
             )
 
         if not agent.move_path:
-            # Arrived at destination
+            # Arrived at destination — jump to next plan step to avoid survival-chain interruption
+            if agent.active_plan:
+                agent.plan_step_index += 1
+                if agent.plan_step_index < len(agent.active_plan["steps"]):
+                    step = agent.active_plan["steps"][agent.plan_step_index]
+                    try:
+                        action_type = ActionType(step["action"])
+                    except ValueError:
+                        agent.active_plan = None
+                        agent.plan_step_index = 0
+                        fsm.transition_to("evaluate")
+                        return
+                    agent.current_action = step["action"]
+                    agent.current_action_emoji = ACTION_EMOJIS.get(action_type, "❓")
+                    agent.action_duration = get_action_duration(action_type, agent, self.world)
+                    agent.action_progress = 0.0
+                    # Only fall back to evaluate if critically starving/dehydrated
+                    if agent.hunger >= 95 or agent.thirst >= 95:
+                        fsm.transition_to("evaluate")
+                    else:
+                        fsm.transition_to("executing")
+                    return
+            # No remaining plan steps — go evaluate
             fsm.transition_to("evaluate")
 
     def _fsm_executing(self, agent: Agent, fsm: FSM, tick: int) -> None:
@@ -1249,9 +1442,9 @@ class SimulationEngine:
                         int(agent.target_position[0]),
                         int(agent.target_position[1]),
                     )
-                # For trade/feed_child, pass the plan step so extra params are available
+                # Pass the plan step for actions that need extra params (recipe, structure_type, etc.)
                 step = None
-                if agent.active_plan and action_type in (ActionType.TRADE, ActionType.FEED_CHILD):
+                if agent.active_plan and action_type in (ActionType.TRADE, ActionType.FEED_CHILD, ActionType.CRAFT, ActionType.BUILD):
                     step = agent.active_plan["steps"][agent.plan_step_index]
                 if action_type in (ActionType.FEED_CHILD, ActionType.ATTACK):
                     result = handler(agent, self.world, target, step, self.agents)
@@ -1351,10 +1544,8 @@ class SimulationEngine:
                         a._reproduce_partner_id = None
                         a._last_reproduction_tick = tick
 
-            # Advance plan
-            agent.action_progress = 0.0
-            agent.action_duration = 0
-            agent.current_action = None
+            # Advance plan — F8+F9: use atomic reset helper
+            self._reset_action_state(agent)
 
             if agent.active_plan:
                 agent.plan_step_index += 1
@@ -1374,15 +1565,10 @@ class SimulationEngine:
         if agent.llm_call_pending:
             fsm.transition_to("llm_waiting")
             return
-
-        # Cooldown: don't retry LLM more than once every 30 ticks after a failed attempt
-        last = getattr(agent, '_last_llm_tick', -999)
-        if last > 0 and tick - last < 30:
-            agent.last_thought = "(waiting before retrying)"
-            fsm.transition_to("llm_waiting")
-            return
+        # F3: Cooldown check removed from here — handled in _run_agent_fsm dispatch
 
         prompt = self.llm.build_prompt(agent, self.world, self.agents)
+        llm_type = type(self.llm).__name__.replace("Orchestrator", "")
         # F1: consume last_action_result after prompt build to prevent stale accumulation
         agent.last_action_result = None
         agent.llm_future = self.llm.call_async(agent.id, prompt)
@@ -1390,6 +1576,7 @@ class SimulationEngine:
         agent._last_llm_tick = tick
         agent.last_thought = "Thinking about what to do next..."
         self.builder.mark_agent_dirty(agent.id)
+        logger.info(f"[LLM] {agent.name} ({agent.role}) asking {llm_type} for plan...")
         fsm.transition_to("llm_waiting")
 
     def _fsm_llm_waiting(self, agent: Agent, fsm: FSM, tick: int) -> None:
@@ -1401,95 +1588,63 @@ class SimulationEngine:
             fsm.transition_to("evaluate")
             return
 
-        if agent.llm_future.done():
-            try:
-                result = agent.llm_future.result()
-                if result.get("success") and result.get("data"):
-                    plan = result["data"]
-                    agent.active_plan = plan
-                    agent.plan_step_index = 0
-                    agent.last_thought = plan.get(
-                        "reasoning", ""
-                    ) or plan.get("think_aloud", "")
-                    agent.monologue_history.append(agent.last_thought)
-                    if len(agent.monologue_history) > 10:
-                        agent.monologue_history.pop(0)
-                    self._process_say_to(agent, plan, tick)
-                    # Consume processed dialogue messages
-                    agent.conversation_queue = [
-                        msg for msg in agent.conversation_queue
-                        if msg.content.get("type") not in ("dialogue", "greeting", "share_knowledge")
-                    ]
-                    logger.debug(
-                        f"{agent.name} received new plan: "
-                        f"{plan.get('intention', '')}"
-                    )
-                else:
-                    err = result.get('error', 'unknown')
-                    logger.warning(f"{agent.name} LLM call failed: [{err}]")
-                    agent.last_thought = f"Plan failed: {err}"
-            except Exception as e:
-                logger.error(f"{agent.name} LLM future error: {e}")
+        # F1: _poll_llm_responses is the sole handler for LLM result processing.
+        # While waiting for poll step, act on instinct.
+        agent.last_thought = "Waiting for guidance..."
+        agent.current_action = "waiting"
+        agent.current_action_emoji = "⏳"
+        self.builder.mark_agent_dirty(agent.id)
 
-            agent.llm_call_pending = False
-            agent.llm_future = None
-            self.builder.mark_agent_dirty(agent.id)
-            fsm.transition_to("evaluate")
-        else:
-            # Still waiting — act on instinct
-            agent.last_thought = "Waiting for guidance..."
-            agent.current_action = "waiting"
-            agent.current_action_emoji = "⏳"
-            self.builder.mark_agent_dirty(agent.id)
-
-            # Poison instinct: if poisoned and health < 50%, prioritize rest/heal
-            from app.simulation.status_effects import StatusEffectManager as _sem
-            if _sem.has_effect(agent, "poisoned") and agent.health < 50:
-                if agent.inventory.get("berries", 0) > 0:
-                    agent.current_action = "heal"
-                    agent.current_action_emoji = "💊"
-                    agent.action_duration = 5
-                    agent.action_progress = 0.0
-                    fsm.transition_to("executing")
-                    return
-                else:
-                    agent.current_action = "rest"
-                    agent.current_action_emoji = "💤"
-                    agent.action_duration = get_action_duration(ActionType.REST, agent, self.world)
-                    agent.action_progress = 0.0
-                    fsm.transition_to("executing")
-                    return
-
-            # Instinct: if hungry, eat from inventory first
-            if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
-                agent.current_action = "eat"
-                agent.current_action_emoji = "🍎"
-                agent.action_duration = 3
+        # Poison instinct: if poisoned and health < 50%, prioritize rest/heal
+        from app.simulation.status_effects import StatusEffectManager as _sem
+        if _sem.has_effect(agent, "poisoned") and agent.health < 50:
+            if agent.inventory.get("berries", 0) > 0:
+                agent.current_action = "heal"
+                agent.current_action_emoji = "💊"
+                agent.action_duration = 5
                 agent.action_progress = 0.0
                 fsm.transition_to("executing")
-            # Rest if energy low
-            elif agent.energy < 30:
+                return
+            else:
                 agent.current_action = "rest"
                 agent.current_action_emoji = "💤"
                 agent.action_duration = get_action_duration(ActionType.REST, agent, self.world)
                 agent.action_progress = 0.0
                 fsm.transition_to("executing")
-            # Otherwise move toward nearest resource
-            elif agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
-                nearby = self.world.get_nearby_resources(agent.position, radius=5)
-                target = None
-                for r in nearby:
-                    if r[2] in ("berries", "water") and r[3] > 0:
-                        target = (r[0], r[1])
-                        break
-                if target and not agent.move_path:
-                    start = (int(agent.position[0]), int(agent.position[1]))
-                    agent.move_path = self.world.find_path(start, target)
-                    agent.target_position = (float(target[0]), float(target[1]))
-                    agent.current_action = "seeking water" if agent.thirst > agent.hunger else "seeking food"
-                    agent.current_action_emoji = "💧" if agent.thirst > agent.hunger else "🍎"
-                    agent.move_progress = 0.0
-                    fsm.transition_to("moving")
+                return
+
+        # Instinct: if hungry, eat from inventory first
+        if agent.hunger > CRITICAL_HUNGER and agent.inventory.get("berries", 0) > 0:
+            agent.current_action = "eat"
+            agent.current_action_emoji = "🍎"
+            agent.action_duration = 3
+            agent.action_progress = 0.0
+            fsm.transition_to("executing")
+        # Rest if energy low
+        elif agent.energy < 30:
+            agent.current_action = "rest"
+            agent.current_action_emoji = "💤"
+            agent.action_duration = get_action_duration(ActionType.REST, agent, self.world)
+            agent.action_progress = 0.0
+            fsm.transition_to("executing")
+        # Otherwise move toward nearest resource
+        elif agent.hunger > CRITICAL_HUNGER or agent.thirst > CRITICAL_THIRST:
+            nearby = self.world.get_nearby_resources(agent.position, radius=5)
+            target = None
+            for r in nearby:
+                if r[2] in ("berries", "water") and r[3] > 0:
+                    target = (r[0], r[1])
+                    break
+            if target and not agent.move_path:
+                start = (int(agent.position[0]), int(agent.position[1]))
+                agent.move_path = self.world.find_path(start, target)
+                agent.target_position = (float(target[0]), float(target[1]))
+                # F9: clear stale action fields before setting instinct move
+                self._reset_action_state(agent)
+                agent.current_action = "seeking water" if agent.thirst > agent.hunger else "seeking food"
+                agent.current_action_emoji = "💧" if agent.thirst > agent.hunger else "🍎"
+                agent.move_progress = 0.0
+                fsm.transition_to("moving")
 
     # ------------------------------------------------------------------
     # LLM polling
@@ -1501,7 +1656,6 @@ class SimulationEngine:
         for agent_id, response in completed:
             agent = next((a for a in self.agents if a.id == agent_id), None)
             if not agent or not agent.llm_call_pending:
-                # Already handled by _fsm_llm_waiting or agent removed
                 continue
 
             if response.get("success") and response.get("data"):
@@ -1523,10 +1677,37 @@ class SimulationEngine:
                 agent.llm_call_pending = False
                 agent.llm_future = None
                 self.builder.mark_agent_dirty(agent.id)
-                logger.debug(
-                    f"{agent.name} plan updated via poll: "
-                    f"{plan.get('intention', '')}"
+
+                steps_summary = "; ".join(
+                    f"{s.get('action','?')}" for s in plan.get("steps", [])[:5]
                 )
+                raw_say = plan.get("say_to")
+                say_to = raw_say if isinstance(raw_say, dict) else {}
+                say_text = (say_to.get("text") or "")[:60] or "-"
+                say_target = say_to.get("agent_id", "") or "none"
+                # Only log plan details if agent is speaking or doing something role-specific
+                if say_text != "-" or any(
+                    s.get("action", "") in ("socialize", "trade", "build", "craft", "mine", "hunt", "guard", "attack")
+                    for s in plan.get("steps", [])[:5]
+                ):
+                    logger.info(
+                        f"[PLAN] {agent.name} ({agent.role}): {plan.get('intention', '?')} "
+                        f"→ [{steps_summary}] | say_to={say_target}:'{say_text}'"
+                    )
+                else:
+                    logger.debug(
+                        f"[PLAN] {agent.name} ({agent.role}): {plan.get('intention', '?')} "
+                        f"→ [{steps_summary}]"
+                    )
+
+                # F1: Transition agent from llm_waiting to evaluate if applicable
+                fsm = self.fsms.get(agent_id)
+                if fsm and fsm.current_state == "llm_waiting":
+                    fsm.transition_to("evaluate")
+            else:
+                err = response.get("error", "unknown")
+                logger.warning(f"❌ {agent.name} LLM failed: {err}")
+                agent.llm_call_pending = False
 
     # ------------------------------------------------------------------
     # DB logging

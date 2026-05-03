@@ -1,5 +1,16 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
+
+# Windows cp1252 can't handle emoji in log output; force UTF-8 for the handler
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
+# Ensure evociv loggers output to console (Uvicorn only shows its own logs by default)
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setLevel(logging.INFO)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"))
+logging.getLogger("evociv").addHandler(_log_handler)
 
 from fastapi import FastAPI, Request
 
@@ -23,29 +34,41 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Create simulation engine with real LLM
-    world = World(width=25, height=25, seed=123)
+    # Create simulation engine with real LLM (falls back to MockLLM if unavailable)
+    world = World(width=80, height=80, seed=123)
 
-    # 6 agents for the 25x25 world
+    # 10 agents with diverse roles spread across the 80x80 world
     agents = [
-        Agent(id="agent_001", name="Zog", position=(3.0, 3.0), role="gatherer", sex="male",
-              strength=60, intelligence=40, sociability=50, speed=55,
-              system_prompt="You are Zog, a gatherer. YOUR MISSION: Help the tribe survive and grow. You must gather food (berries), drink water, and rest when tired. If you see a compatible partner, reproduce to grow the population. The civilization MUST expand — this is your highest priority."),
-        Agent(id="agent_002", name="Mila", position=(20.0, 18.0), role="builder", sex="female",
-              strength=70, intelligence=55, sociability=40, speed=35,
-              system_prompt="You are Mila, a builder. YOUR MISSION: Help the tribe survive and grow. Gather resources, eat when hungry, drink when thirsty, rest when tired. Reproduce whenever you can — more tribe members mean a stronger civilization. Growth is everything."),
-        Agent(id="agent_003", name="Kael", position=(22.0, 5.0), role="scout", sex="male",
-              strength=45, intelligence=60, sociability=65, speed=80,
-              system_prompt="You are Kael, a scout. YOUR MISSION: Explore and help the tribe expand. Stay alive: eat berries, drink water, rest. Find a partner and reproduce — new members are essential for the civilization to thrive. The future depends on growth."),
-        Agent(id="agent_004", name="Nyx", position=(8.0, 20.0), role="gatherer", sex="female",
-              strength=40, intelligence=70, sociability=30, speed=60,
-              system_prompt="You are Nyx, a gatherer. YOUR MISSION: Ensure the tribe's survival through gathering. Collect food and water, rest to keep your strength up. Reproduction is key — help create the next generation. The civilization must grow at all costs."),
-        Agent(id="agent_005", name="Riv", position=(12.0, 12.0), role="scout", sex="female",
-              strength=35, intelligence=50, sociability=80, speed=75,
-              system_prompt="You are Riv, a scout. YOUR MISSION: Be social and keep the tribe connected. Gather food and water, rest when low on energy. Find a partner and reproduce — the tribe needs more people to survive and grow. Population growth is the top priority."),
-        Agent(id="agent_006", name="Fen", position=(5.0, 22.0), role="builder", sex="male",
-              strength=80, intelligence=45, sociability=55, speed=30,
-              system_prompt="You are Fen, a builder. YOUR MISSION: Build the tribe's future. Gather resources, eat, drink, and rest to stay strong. Reproduction is vital — create offspring to expand the civilization. A growing population means a thriving society. NEVER stop growing."),
+        Agent(id="agent_001", name="Zog", position=(5.0, 5.0), role="gatherer", sex="male",
+              strength=60, intelligence=40, sociability=50, speed=55, max_age=3500,
+              system_prompt="You are Zog, a gatherer. Gather food (berries) and resources for the tribe. Stay near resource-rich areas. Craft tools when you have materials."),
+        Agent(id="agent_002", name="Mila", position=(35.0, 30.0), role="builder", sex="female",
+              strength=70, intelligence=55, sociability=40, speed=35, max_age=4000,
+              system_prompt="You are Mila, a builder. Construct buildings (houses, walls, workbenches) to develop the settlement. Gather wood and stone first, then build."),
+        Agent(id="agent_003", name="Kael", position=(60.0, 10.0), role="scout", sex="male",
+              strength=45, intelligence=60, sociability=65, speed=80, max_age=3000,
+              system_prompt="You are Kael, a scout. Explore unknown areas and report back. Your speed lets you cover ground quickly. Socialize with other agents to share knowledge."),
+        Agent(id="agent_004", name="Nyx", position=(10.0, 50.0), role="hunter", sex="female",
+              strength=65, intelligence=50, sociability=30, speed=70, max_age=3200,
+              system_prompt="You are Nyx, a hunter. Hunt animals for meat and materials. Craft a spear when you can — it helps with hunting. Stay near animal-rich areas."),
+        Agent(id="agent_005", name="Riv", position=(45.0, 60.0), role="fisher", sex="female",
+              strength=35, intelligence=50, sociability=80, speed=40, max_age=3500,
+              system_prompt="You are Riv, a fisher. Fish from water sources to feed the tribe. Craft a fishing rod when you have materials. Stay near water. Be social!"),
+        Agent(id="agent_006", name="Fen", position=(25.0, 70.0), role="farmer", sex="male",
+              strength=55, intelligence=60, sociability=45, speed=30, max_age=3800,
+              system_prompt="You are Fen, a farmer. Establish farms to produce long-term food. Build farm structures near water. Gather resources to support farming."),
+        Agent(id="agent_007", name="Tix", position=(70.0, 55.0), role="miner", sex="male",
+              strength=75, intelligence=40, sociability=25, speed=25, max_age=3500,
+              system_prompt="You are Tix, a miner. Mine for stone, iron ore, and coal. Craft a pickaxe to mine faster. Provide materials for builders and crafters."),
+        Agent(id="agent_008", name="Lia", position=(50.0, 42.0), role="crafter", sex="female",
+              strength=40, intelligence=75, sociability=55, speed=35, max_age=3600,
+              system_prompt="You are Lia, a crafter. Craft tools, weapons, and equipment for the tribe. Build a workbench first for better recipes. Make axes, pickaxes, spears, armor."),
+        Agent(id="agent_009", name="Gor", position=(15.0, 35.0), role="fighter", sex="male",
+              strength=80, intelligence=35, sociability=40, speed=50, max_age=3000,
+              system_prompt="You are Gor, a fighter. Protect the settlement from threats. Guard important areas. Craft weapons when you have materials. Stay alert."),
+        Agent(id="agent_010", name="Ena", position=(40.0, 15.0), role="healer", sex="female",
+              strength=30, intelligence=70, sociability=75, speed=45, max_age=4000,
+              system_prompt="You are Ena, a healer. Heal injured agents using berries. Stay near the settlement where agents gather. Be social and keep the tribe healthy."),
     ]
 
     memory = AgentMemory()

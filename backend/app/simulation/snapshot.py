@@ -35,12 +35,13 @@ class WorldSnapshotBuilder:
         """Mark a structure as having changed state."""
         self._dirty_structures.add(structure_id)
 
-    def _build_agent_state(self, agent: Agent) -> AgentState:
+    def _build_agent_state(self, agent: Agent, commanded_ids: set[str] | None = None) -> AgentState:
         """Convert an Agent dataclass to a Pydantic AgentState."""
         return AgentState(
             id=agent.id,
             name=agent.name,
             position=agent.position,
+            is_commanded=(commanded_ids is not None and agent.id in commanded_ids),
             role=agent.role,
             hunger=round(agent.hunger, 1),
             thirst=round(agent.thirst, 1),
@@ -132,13 +133,22 @@ class WorldSnapshotBuilder:
                 structures.append(self._build_structure_update(s))
         return structures
 
+    def _get_commanded_ids(self, command_queue: dict[str, dict] | None) -> set[str]:
+        """Extract set of agent IDs from a command queue dict."""
+        if command_queue is None:
+            return set()
+        return set(command_queue.keys())
+
     def build(
-        self, tick: int, events: list[EngineEvent] | None = None, faction_manager=None, colony_stats=None
+        self, tick: int, events: list[EngineEvent] | None = None, faction_manager=None,
+        colony_stats=None, director_mode: bool = False, command_queue: dict[str, dict] | None = None,
     ) -> WorldSnapshot:
         """
         Build a complete snapshot of the simulation state.
         Includes ALL agents (full state) and ALL tiles (those with resources).
         """
+        commanded_ids = self._get_commanded_ids(command_queue)
+
         # All tiles with resources
         tiles = []
         for y in range(self.world.height):
@@ -155,7 +165,7 @@ class WorldSnapshotBuilder:
         # All agents (full state)
         agents_dict = {}
         for agent in self.agents:
-            agents_dict[agent.id] = self._build_agent_state(agent)
+            agents_dict[agent.id] = self._build_agent_state(agent, commanded_ids)
 
         factions = []
         if faction_manager:
@@ -201,10 +211,12 @@ class WorldSnapshotBuilder:
             },
             weather_state=self.world.weather.get_weather_state(),
             faction_tile_visibility=faction_tile_visibility,
+            director_mode=director_mode,
         )
 
     def build_delta(
-        self, tick: int, events: list[EngineEvent] | None = None, faction_manager=None, colony_stats=None
+        self, tick: int, events: list[EngineEvent] | None = None, faction_manager=None,
+        colony_stats=None, director_mode: bool = False, command_queue: dict[str, dict] | None = None,
     ) -> WorldSnapshot:
         """
         Build a delta snapshot — only changed data since last call.
@@ -214,6 +226,8 @@ class WorldSnapshotBuilder:
         - Events: only events from this tick
         - Structures: only dirty structures
         """
+        commanded_ids = self._get_commanded_ids(command_queue)
+
         # Dirty tiles
         tiles = []
         for (x, y) in self.world.dirty_tiles:
@@ -229,7 +243,7 @@ class WorldSnapshotBuilder:
         # All agents (full state — they change every tick)
         agents_dict = {}
         for agent in self.agents:
-            agents_dict[agent.id] = self._build_agent_state(agent)
+            agents_dict[agent.id] = self._build_agent_state(agent, commanded_ids)
 
         # Removed agents (don't clear here — build() will clear after full snapshot)
         removed = list(self._removed_agents)
@@ -280,6 +294,7 @@ class WorldSnapshotBuilder:
             },
             weather_state=self.world.weather.get_weather_state(),
             faction_tile_visibility=faction_tile_visibility,
+            director_mode=director_mode,
         )
 
 

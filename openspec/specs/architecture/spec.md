@@ -15,16 +15,21 @@ The system MUST provide a SvelteKit app at `frontend/` with TypeScript, ESLint, 
 - WHEN `npm run dev` is executed
 - THEN the dev server starts on port 5173 without compilation errors
 
-### R2: Canvas Engine Skeletons
-The system MUST provide five skeleton TypeScript files under `frontend/src/lib/canvas/`.
+### R2: Canvas 2D Rendering Layer
 
-**Files**: `engine.ts`, `grid.ts`, `entities.ts`, `animation.ts`, `camera.ts`
-Each MUST export a class matching its domain (e.g., `Camera`, `Grid`) and compile without errors.
+The system MUST provide a 2D canvas rendering layer under `frontend/src/lib/canvas2d/` using PixiJS v8 with `pixi-viewport` for camera control. A `Canvas2D.svelte` component MUST mount the canvas and manage lifecycle. A `canvas2dStore.ts` MUST bridge simulation state to PixiJS objects.
+(Previously: Five skeleton TypeScript files under `frontend/src/lib/canvas/` with skeleton classes for Engine, Grid, Entities, Animation, Camera.)
 
-#### Scenario: Module imports
-- GIVEN all five files exist with skeleton exports
-- WHEN imported in a TypeScript module
-- THEN compilation succeeds
+#### Scenario: Canvas2D mounts PixiJS
+- GIVEN `Canvas2D.svelte` is rendered in a route
+- WHEN the component mounts
+- THEN a PixiJS `Application` initializes on a `<canvas>` element
+- AND pixi-viewport is configured for pan/zoom
+
+#### Scenario: Store bridges state
+- GIVEN simulation produces new entity positions each tick
+- WHEN `canvas2dStore` receives the tick data
+- THEN PixiJS sprite positions update via Ticker interpolation
 
 ### R3: Svelte 5 Reactive Stores
 Three `.svelte.js` files under `frontend/src/lib/stores/` MUST use Svelte 5 runes:

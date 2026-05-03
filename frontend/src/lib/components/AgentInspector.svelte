@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { simulationStore } from '$lib/stores/simulationStore.svelte.js';
 	import { uiStore } from '$lib/stores/uiStore.svelte.js';
+	import { send } from '$lib/components/ws.js';
 
 	interface AgentData {
 		id?: string;
@@ -34,6 +35,7 @@
 		is_child?: boolean;
 		parent_id?: string;
 		maturity_age?: number;
+		is_commanded?: boolean;
 		[key: string]: unknown;
 	}
 
@@ -51,6 +53,50 @@
 			: null
 	);
 	let factions = $derived(($simulationStore.factions ?? {}) as Record<string, FactionData>);
+
+	let thoughtText = $state('');
+
+	const ACTIONS = [
+		{ id: 'gather', label: 'Gather', emoji: '🌾' },
+		{ id: 'chop', label: 'Chop', emoji: '🪓' },
+		{ id: 'rest', label: 'Rest', emoji: '💤' },
+		{ id: 'build', label: 'Build', emoji: '🔧' },
+		{ id: 'mine', label: 'Mine', emoji: '⛏️' },
+		{ id: 'guard', label: 'Guard', emoji: '🛡️' }
+	];
+
+	function sendCommand(cmdType: string, payload: Record<string, unknown> = {}) {
+		if (!$uiStore.selectedAgentId) return;
+		send({
+			type: 'command',
+			payload: {
+				type: cmdType,
+				agent_id: $uiStore.selectedAgentId,
+				payload
+			}
+		});
+	}
+
+	function sendAction(actionId: string) {
+		sendCommand('do_action', { action_id: actionId.toUpperCase() });
+	}
+
+	function sendThought() {
+		const text = thoughtText.trim();
+		if (!text) return;
+		sendCommand('inject_thought', { text });
+		thoughtText = '';
+	}
+
+	function handleThoughtKeydown(e: KeyboardEvent) {
+		if (e.ctrlKey && e.key === 'Enter') {
+			sendThought();
+		}
+	}
+
+	function sendRelease() {
+		sendCommand('release', {});
+	}
 
 	const ITEM_EMOJIS: Record<string, string> = {
 		berries: '🫐',
@@ -89,7 +135,12 @@
 		<button class="close" onclick={() => uiStore.deselectAgent()} aria-label="Close inspector"
 			>×</button
 		>
-		<h3 class="title">Agent {agent.name ?? agent.id ?? $uiStore.selectedAgentId}</h3>
+		<h3 class="title">{agent.name ?? agent.id ?? $uiStore.selectedAgentId}</h3>
+
+		<div class="thought-bubble">
+			<span class="thought-emoji">{agent.current_action_emoji || '💭'}</span>
+			<span class="thought-text">{agent.last_thought || '...'}</span>
+		</div>
 
 		<details class="section" open>
 			<summary>Vital Signs</summary>
@@ -168,12 +219,12 @@
 			</div>
 		</details>
 
-		<details class="section">
+		<details class="section" open>
 			<summary>Monologue</summary>
 			<div class="section-body">
 				{#if agent.monologue_history && agent.monologue_history.length > 0}
 					<ul class="monologue-list">
-						{#each agent.monologue_history.slice(-5) as thought (thought)}
+						{#each agent.monologue_history.slice(-5) as thought, i (i)}
 							<li>{thought}</li>
 						{/each}
 					</ul>
@@ -270,6 +321,45 @@
 				<p class="prompt-text">{truncatePrompt(agent.system_prompt)}</p>
 			</div>
 		</details>
+
+		{#if $uiStore.directorMode}
+			<details class="section director-section" open>
+				<summary>👑 Director Mode</summary>
+				<div class="section-body">
+					<div class="command-status">
+						<span class="status-badge" class:commanded={agent.is_commanded} class:autonomous={!agent.is_commanded}>
+							{agent.is_commanded ? '🔸 Commanded' : '◽ Autonomous'}
+						</span>
+					</div>
+
+					<div class="action-grid">
+						{#each ACTIONS as act (act.id)}
+							<button class="action-btn" onclick={() => sendAction(act.id)} title={act.label}>
+								<span class="action-emoji">{act.emoji}</span>
+								<span class="action-label">{act.label}</span>
+							</button>
+						{/each}
+					</div>
+
+					<div class="thought-section">
+						<textarea
+							class="thought-input"
+							bind:value={thoughtText}
+							onkeydown={handleThoughtKeydown}
+							placeholder="Whisper a thought into the agent's mind..."
+							rows="3"
+						></textarea>
+						<button class="inject-btn" onclick={sendThought} disabled={!thoughtText.trim()}>
+							🧠 Inject Thought
+						</button>
+					</div>
+
+					<button class="release-btn" onclick={sendRelease}>
+						🔓 Release to Autonomy
+					</button>
+				</div>
+			</details>
+		{/if}
 	</div>
 {/if}
 
@@ -313,9 +403,33 @@
 	}
 
 	.title {
-		margin: 0 0 12px;
+		margin: 0 0 8px;
 		font-size: 15px;
 		font-weight: 600;
+	}
+
+	.thought-bubble {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		padding: 8px 10px;
+		margin-bottom: 12px;
+		background: rgba(255, 215, 0, 0.08);
+		border: 1px solid rgba(255, 215, 0, 0.15);
+		border-radius: 8px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e8d44d;
+	}
+
+	.thought-emoji {
+		flex-shrink: 0;
+		font-size: 14px;
+		margin-top: 1px;
+	}
+
+	.thought-text {
+		font-style: italic;
 	}
 
 	.section {
@@ -450,5 +564,137 @@
 		line-height: 1.5;
 		white-space: pre-wrap;
 		word-break: break-word;
+	}
+
+	/* Director Mode */
+	.director-section summary {
+		color: #ffd700;
+	}
+
+	.command-status {
+		margin-bottom: 8px;
+	}
+
+	.status-badge {
+		font-size: 11px;
+		padding: 2px 8px;
+		border-radius: 4px;
+		font-weight: 600;
+	}
+
+	.status-badge.commanded {
+		background: rgba(255, 215, 0, 0.2);
+		color: #ffd700;
+		border: 1px solid rgba(255, 215, 0, 0.3);
+	}
+
+	.status-badge.autonomous {
+		background: rgba(128, 128, 128, 0.2);
+		color: #aaa;
+		border: 1px solid rgba(128, 128, 128, 0.3);
+	}
+
+	.action-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		margin-bottom: 8px;
+	}
+
+	.action-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		padding: 6px 4px;
+		background: rgba(255, 215, 0, 0.1);
+		border: 1px solid rgba(255, 215, 0, 0.2);
+		border-radius: 6px;
+		cursor: pointer;
+		color: #ddd;
+		font-size: 11px;
+		transition: all 0.15s;
+	}
+
+	.action-btn:hover {
+		background: rgba(255, 215, 0, 0.25);
+		border-color: #ffd700;
+		color: #fff;
+	}
+
+	.action-emoji {
+		font-size: 18px;
+	}
+
+	.action-label {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.thought-section {
+		margin-bottom: 8px;
+	}
+
+	.thought-input {
+		width: 100%;
+		padding: 6px;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 4px;
+		color: #ddd;
+		font-size: 11px;
+		resize: vertical;
+		box-sizing: border-box;
+		font-family: inherit;
+	}
+
+	.thought-input::placeholder {
+		color: #666;
+	}
+
+	.thought-input:focus {
+		outline: none;
+		border-color: #ffd700;
+	}
+
+	.inject-btn {
+		width: 100%;
+		margin-top: 4px;
+		padding: 6px;
+		background: rgba(255, 215, 0, 0.15);
+		border: 1px solid rgba(255, 215, 0, 0.3);
+		border-radius: 4px;
+		color: #ffd700;
+		cursor: pointer;
+		font-size: 11px;
+		font-weight: 600;
+		transition: all 0.15s;
+	}
+
+	.inject-btn:hover:not(:disabled) {
+		background: rgba(255, 215, 0, 0.3);
+	}
+
+	.inject-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+
+	.release-btn {
+		width: 100%;
+		padding: 8px;
+		background: rgba(244, 67, 54, 0.15);
+		border: 1px solid rgba(244, 67, 54, 0.3);
+		border-radius: 4px;
+		color: #f44336;
+		cursor: pointer;
+		font-size: 12px;
+		font-weight: 600;
+		transition: all 0.15s;
+	}
+
+	.release-btn:hover {
+		background: rgba(244, 67, 54, 0.3);
 	}
 </style>

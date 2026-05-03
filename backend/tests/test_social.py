@@ -795,8 +795,8 @@ class TestChildhood:
         assert len(death_events) == 1
         assert death_events[0].metadata.get("cause") == "starvation"
 
-    def test_partner_fsm_transitions_to_executing(self):
-        """Partner FSM also transitions to executing during reproduction."""
+    def test_partner_fsm_not_mutated_during_reproduction(self):
+        """F6: Partner FSM is NOT mutated during reproduction — flags-only signaling."""
         from app.simulation.agent import RelationshipData
         world = World(width=10, height=10)
         agent = Agent(id="a1", name="Alice", position=(5.0, 5.0), energy=100, hunger=0, thirst=0, sex="female", age=200)
@@ -806,10 +806,20 @@ class TestChildhood:
         engine = SimulationEngine(world=world, agents=[agent, partner])
         fsm = engine.fsms[agent.id]
         fsm.transition_to("evaluate")
+        # Put partner in a non-idle state (e.g., llm_waiting) to verify it's NOT mutated
+        partner_fsm = engine.fsms[partner.id]
+        partner_fsm.transition_to("evaluate")
+        partner_fsm.transition_to("llm_trigger")
+        partner_fsm.transition_to("llm_waiting")
+        assert partner_fsm.current_state == "llm_waiting"
         engine._fsm_evaluate(agent, fsm, tick=1000)
         assert agent.current_action == "reproduce"
         assert fsm.current_state == "executing"
-        assert engine.fsms[partner.id].current_state == "executing"
+        # F6: Partner FSM stays in llm_waiting (NOT changed to executing)
+        assert partner_fsm.current_state == "llm_waiting"
+        # F6: But partner flags ARE set
+        assert partner._is_reproducing is True
+        assert partner._reproduce_partner_id == agent.id
 
 
 # ─── F4 Tests ────────────────────────────────────────────────────

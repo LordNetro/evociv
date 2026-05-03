@@ -1,8 +1,8 @@
 schema: spec-driven
 
 context: |
-  Tech stack: Python/FastAPI backend (async, SQLAlchemy + aiosqlite, LiteLLM, WebSocket) + SvelteKit frontend (Svelte 5 runes, TypeScript 6, Vite 8, Threlte 8 + Three.js 3D, Chart.js)
-  Architecture: Monorepo (npm workspaces) with two-service architecture — FastAPI backend (app/) with simulation engine + AI orchestration, SvelteKit frontend (frontend/) with reactive stores + Threlte 8 / Three.js 3D canvas
+  Tech stack: Python/FastAPI backend (async, SQLAlchemy + aiosqlite, LiteLLM, WebSocket) + SvelteKit frontend (Svelte 5 runes, TypeScript 6, Vite 8, PixiJS v8 2D canvas, Chart.js)
+  Architecture: Monorepo (npm workspaces) with two-service architecture — FastAPI backend (app/) with simulation engine + AI orchestration, SvelteKit frontend (frontend/) with reactive stores + PixiJS v8 2D rendering
   Communication: WebSocket (delta snapshots in real time)
   Persistence: SQLite (events/metrics) + JSON configs (world/agents/rules) + ChromaDB (agent memory via LiteLLM)
   Testing: pytest + pytest-asyncio + httpx ASGITransport (backend, 114 tests), svelte-check (frontend type check). NO frontend test framework.

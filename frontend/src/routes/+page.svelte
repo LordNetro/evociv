@@ -6,6 +6,7 @@
 	import AgentInspector from '$lib/components/AgentInspector.svelte';
 	import EventLog from '$lib/components/EventLog.svelte';
 	import ColonyInfo from '$lib/components/ColonyInfo.svelte';
+	import SimDashboard from '$lib/components/SimDashboard.svelte';
 	import { connect, disconnect } from '$lib/components/ws.js';
 
 	onMount(() => {
@@ -21,6 +22,7 @@
 	<AgentInspector />
 	<EventLog />
 	<ColonyInfo />
+	<SimDashboard />
 </div>
 
 <style>

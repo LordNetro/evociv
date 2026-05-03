@@ -99,12 +99,13 @@ class TestBuildAgentPrompt:
         for action in actions:
             assert f'"{action}"' in JSON_FORMAT_INSTRUCTION, f"missing action {action}"
 
-    def test_system_prompt_mentions_structures_crafting_tools(self):
-        """SYSTEM_PROMPT_TEMPLATE mentions structures, crafting, and tools."""
+    def test_system_prompt_mentions_social_and_actions(self):
+        """SYSTEM_PROMPT_TEMPLATE mentions social interaction and actions."""
         prompt_lower = SYSTEM_PROMPT_TEMPLATE.lower()
-        assert "structures" in prompt_lower
-        assert "craft" in prompt_lower
-        assert "tools" in prompt_lower
+        assert "social" in prompt_lower
+        assert "talk" in prompt_lower
+        assert "trade" in prompt_lower
+        assert "relationships" in prompt_lower
 
     def test_build_agent_prompt_includes_role_guidance_builder(self):
         """Prompt for builder includes construction guidance."""
@@ -171,7 +172,7 @@ class TestBuildAgentPrompt:
             trigger="test",
             craftable_recipes="stone_axe: wood:3, stone:2 -> stone_axe:1",
         )
-        assert "CRAFTABLE RECIPES:" in prompt
+        assert "CRAFTABLE RECIPES (ready to craft):" in prompt
         assert "stone_axe" in prompt
 
     def test_prompt_craftable_recipes_empty_when_none(self):
@@ -185,8 +186,7 @@ class TestBuildAgentPrompt:
             trigger="test",
             craftable_recipes="",
         )
-        assert "CRAFTABLE RECIPES:" in prompt
-        assert "(none)" in prompt
+        assert "CRAFTABLE RECIPES (ready to craft):" in prompt
 
     def test_prompt_includes_equipment(self):
         """Prompt includes EQUIPMENT section showing weapon, armor, tool."""
@@ -342,7 +342,7 @@ class TestRealLLMOrchestrator:
         agent = Agent(id="test_001", name="Crafter", position=(5.0, 5.0), role="crafter")
         agent.inventory = {"wood": 5, "stone": 5}
         prompt = orchestrator.build_prompt(agent, world=world)
-        assert "CRAFTABLE RECIPES:" in prompt
+        assert "CRAFTABLE RECIPES (ready to craft):" in prompt
         assert "stone_axe" in prompt
 
     def test_orchestrator_craftable_recipes_empty_for_non_crafter(self):
@@ -354,8 +354,7 @@ class TestRealLLMOrchestrator:
         agent = Agent(id="test_001", name="Gatherer", position=(5.0, 5.0), role="gatherer")
         agent.inventory = {"wood": 5, "stone": 5}
         prompt = orchestrator.build_prompt(agent, world=world)
-        assert "CRAFTABLE RECIPES:" in prompt
-        assert "(none)" in prompt.lower()
+        assert "CRAFTABLE RECIPES (ready to craft):" in prompt
 
     def test_orchestrator_includes_equipment(self):
         """Orchestrator build_prompt includes equipment loadout."""

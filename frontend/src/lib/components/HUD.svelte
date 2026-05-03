@@ -1,7 +1,22 @@
 <script lang="ts">
 	import { simulationStore } from '$lib/stores/simulationStore.svelte.js';
 	import { uiStore } from '$lib/stores/uiStore.svelte.js';
+	import { send } from '$lib/components/ws.js';
 	import HudWidgets from './HudWidgets.svelte';
+
+	function toggleDirector() {
+		if ($uiStore.directorMode) {
+			// Turning OFF: send release_all, then flip state
+			send({
+				type: 'command',
+				payload: { type: 'release_all', agent_id: '', payload: {} }
+			});
+			uiStore.setDirectorMode(false);
+		} else {
+			// Turning ON: just flip state
+			uiStore.setDirectorMode(true);
+		}
+	}
 </script>
 
 <div class="hud">
@@ -13,6 +28,13 @@
 	<HudWidgets />
 	<button class="btn" onclick={() => uiStore.setPaused(!$uiStore.paused)}>
 		{$uiStore.paused ? 'Resume' : 'Pause'}
+	</button>
+	<button
+		class="btn director-btn"
+		class:director-on={$uiStore.directorMode}
+		onclick={toggleDirector}
+	>
+		{$uiStore.directorMode ? '👑 Director: ON' : 'Director: OFF'}
 	</button>
 </div>
 
@@ -67,5 +89,20 @@
 
 	.btn:hover {
 		background: rgba(255, 255, 255, 0.25);
+	}
+
+	.director-btn {
+		background: rgba(128, 128, 128, 0.3);
+		border-color: rgba(128, 128, 128, 0.4);
+	}
+
+	.director-btn.director-on {
+		background: rgba(255, 215, 0, 0.3);
+		border-color: #ffd700;
+		color: #ffd700;
+	}
+
+	.director-btn.director-on:hover {
+		background: rgba(255, 215, 0, 0.45);
 	}
 </style>

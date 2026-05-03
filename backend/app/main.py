@@ -2,16 +2,6 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 
-# Windows cp1252 can't handle emoji in log output; force UTF-8 for the handler
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-
-# Ensure evociv loggers output to console (Uvicorn only shows its own logs by default)
-_log_handler = logging.StreamHandler(sys.stdout)
-_log_handler.setLevel(logging.INFO)
-_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"))
-logging.getLogger("evociv").addHandler(_log_handler)
-
 from fastapi import FastAPI, Request
 
 from app.core.config import settings
@@ -24,6 +14,16 @@ from app.simulation.agent import Agent
 from app.simulation.engine import SimulationEngine
 from app.ai.orchestrator import RealLLMOrchestrator
 from app.ai.memory import AgentMemory
+
+# Windows cp1252 can't handle emoji in log output; force UTF-8 for the handler
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
+# Ensure evociv loggers output to console (Uvicorn only shows its own logs by default)
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setLevel(logging.INFO)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"))
+logging.getLogger("evociv").addHandler(_log_handler)
 
 logger = logging.getLogger("evociv")
 
